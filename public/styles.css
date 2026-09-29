@@ -157,3 +157,8 @@ a.ph-info-link:hover strong,.ph-info>a:hover strong{text-decoration:underline;te
 #officials-list{padding:0 22px 6px}
 .official-form-card h2{margin-bottom:14px}
 @media(max-width:600px){#officials-list{padding:0 16px 4px}}
+
+.row-actions{display:inline-flex;gap:6px;flex-wrap:wrap}
+.tie-fields{margin:12px 0 4px;border:1px solid var(--line);border-radius:8px;padding:8px 12px}
+.tie-fields summary{cursor:pointer;font-size:12px;font-weight:600;color:var(--green)}
+.tie-fields label{margin-top:8px}

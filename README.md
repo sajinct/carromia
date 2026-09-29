@@ -13,7 +13,7 @@ https://sajinct.github.io/carromia/ is the live event site. The static app talks
 ### One-time setup
 
 1. In the Supabase dashboard open **SQL Editor** and run, in order:
-   `supabase/migrations/20260929000000_carromia_init.sql`, `supabase/migrations/20260929010000_carromia_live.sql`, `supabase/migrations/20260930000000_carromia_practice.sql`, then `supabase/migrations/20260930010000_carromia_practice_devices.sql`.
+   `supabase/migrations/20260929000000_carromia_init.sql`, `supabase/migrations/20260929010000_carromia_live.sql`, `supabase/migrations/20260930000000_carromia_practice.sql`, then `supabase/migrations/20260930010000_carromia_practice_devices.sql`, then `supabase/migrations/20261001000000_carromia_harden_save.sql` (the database derives the public copy itself and refuses non-admin changes to settings, teams and the draw on the real event).
    Together they load the 16-team sample tournament into **practice mode** and open registration on the real event (existing real events are never overwritten; each file is safe to re-run).
 2. **Authentication → Users → Add user**: create an account for each official (tick *Auto confirm*).
 3. Make them officials in the SQL Editor (`admin` can change settings, create the draw and clear data; `official` runs check-in, boards and results):
@@ -30,6 +30,8 @@ https://sajinct.github.io/carromia/ is the live event site. The static app talks
 - **Registration** is open on the real event as soon as the setup is run. It closes when an admin unticks *Registration open* in Settings or creates the draw.
 - **Practice mode** rehearses the whole event on a separate practice tournament, on any device. An official opens it from Settings → Open practice mode; the panel then shows links and QR codes for a **TV** (live boards), **phones** (registration) and **official phones** (desk). Any device opened with `?practice=1` follows the practice event and shows a yellow PRACTICE MODE banner until someone taps **Exit practice**. **Start empty practice** clears practice teams and opens practice registration (register → check in → draw → play → winners); **Load sample tournament** gives a ready-made draw. The public site and real registrations are never affected, and any official may try every action in practice.
 - **Removing a team** (admins, real event, before the draw): Teams → Remove. The team and its contact details are deleted and its ID is never reused. After the draw, teams can’t be removed because the bracket depends on them.
+- **Walkover / no-show** (admins): Match control → queue → **Walkover**. Choose the team that advances and a reason; the match is completed without play, no check-in or rest period is needed, and later rounds update. **Results → Undo walkover** puts it back in the queue while the next round hasn’t been called.
+- **Correcting a result** (admins): Results → **Correct**. Enter the right coin counts (and the tie-break decision if equal); the winner is worked out again and later rounds are re-derived. Possible only until the winner’s next match is called; the original time is kept and the result is marked *Corrected*.
 - **Starting over** (admins): Settings → Start a fresh event → type `RESET`. It clears teams, matches and results, keeps the event details and reopens registration.
 
 ### Preview the build locally
@@ -122,6 +124,6 @@ Tests cover bracket completion for every team count from 2–128, byes, check-in
 
 ## Before a real event
 
-This release is a local functional prototype. Production setup remains: HTTPS hosting, abuse protection beyond the basic per-connection registration limit (30 per 10 minutes), and backup/restore operations. Supabase storage and named officials are available (see above); desk sign-ins are held in server memory, so a restart signs officials out. It does not support concurrent server instances, result corrections after advancement, no-show forfeits, or draw editing.
+This release is a local functional prototype. Production setup remains: HTTPS hosting, abuse protection beyond the basic per-connection registration limit (30 per 10 minutes), and backup/restore operations. Supabase storage and named officials are available (see above); desk sign-ins are held in server memory, so a restart signs officials out. It does not support concurrent server instances or draw editing; a result can be corrected only until the winner’s next match is called.
 
 Confirm event date, deadlines, fees, team capacity, tie-break/queen/foul/no-show rules, and rest policy. No payment collection or unconfirmed rules are implemented. The public information page describes the confirmed 10-minute rule; if the committee changes that rule, update the copy as well as the timer setting.

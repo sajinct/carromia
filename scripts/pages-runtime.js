@@ -4,14 +4,14 @@
 // Practice mode: any device opened with ?practice=1 (or switched from the desk) follows the
 // separate 'practice' event instead, so a TV, phones and the desk can rehearse the full flow
 // without touching the real event. It stays on until "Exit practice".
-import { emptyState, createDraw, assign, start, result, eligible, fail, updateSettings, checkIn, unassign, freshEvent, publicState, log, boardReady, removeTeam, practiceEvent } from './tournament-browser.js';
+import { emptyState, createDraw, assign, start, result, eligible, fail, updateSettings, checkIn, unassign, freshEvent, publicState, log, boardReady, removeTeam, practiceEvent, walkover, undoWalkover, correctResult } from './tournament-browser.js';
 
 export const pagesMode = true;
 // The publishable key is meant for browsers; the database rules decide what it may do.
 const SUPABASE_URL = 'https://vzxcqpgwvknonkhjinuk.supabase.co';
 const PUBLISHABLE_KEY = 'sb_publishable_HdgK5UXMha3bvF5mk7o1Yw_eMN6h_Ro';
 const SESSION_KEY = 'carromia-official-session', PRACTICE_KEY = 'carromia-practice';
-const adminOnly = new Set(['draw', 'settings', 'demo', 'reset', 'backup', 'remove-team']);
+const adminOnly = new Set(['draw', 'settings', 'demo', 'reset', 'backup', 'remove-team', 'walkover', 'undo-walkover', 'correct-result']);
 let offset = 0, clockSynced = false;
 const now = () => Date.now() + offset;
 
@@ -131,7 +131,10 @@ export async function remoteApi(path, input = {}) {
     draw: state => createDraw(state),
     assign: state => assign(state, input.id, input.board, now()),
     start: state => start(state, input.id, now()),
-    result: state => { result(state, input.id, input, now()); const m = state.matches.find(m => m.id === input.id); if (m.status === 'completed') m.official = user.name; },
+    result: state => result(state, input.id, input, now(), user.name),
+    'correct-result': state => correctResult(state, input.id, input, now(), user.name),
+    walkover: state => walkover(state, input.id, input.winner, input.reason, now(), user.name),
+    'undo-walkover': state => undoWalkover(state, input.id, now()),
     unassign: state => unassign(state, input.id),
     'board-ready': state => boardReady(state, input.board, now()),
     settings: state => { updateSettings(state, input); log(state, 'Event settings updated'); },

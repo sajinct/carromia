@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { emptyState, addTeam, createDraw, assign, start, result, eligible, updateSettings, boardReady, removeTeam, practiceEvent, publicState } from '../lib/tournament.mjs';
+import { emptyState, addTeam, createDraw, assign, start, result, eligible, updateSettings, boardReady, removeTeam, practiceEvent, publicState, walkover, undoWalkover, correctResult, unassign } from '../lib/tournament.mjs';
 function setup(n) { const s = emptyState(); for (let i = 1; i <= n; i++) { const t = addTeam(s, { name: `Team ${i}`, parish: 'Parish', players: [{ name: `P${i} A`, mobile: '9000000000' }, { name: `P${i} B`, mobile: '9000000001' }] }); t.checkedIn = true; } return s; }
 test('registration requires exactly two valid players and unique team names', () => { const s = setup(1); assert.throws(() => addTeam(s, { name: 'New', parish: 'Parish', players: [] }), /exactly two/); assert.throws(() => addTeam(s, { ...s.teams[0] }), /already registered/); assert.equal(s.teams.length, 1); });
 test('draw handles every team count from 2 to 128 with one champion and n-1 actual matches', () => {
@@ -54,4 +54,42 @@ test('the practice event is the sample tournament with the real event details an
   const p = practiceEvent({ ...emptyState().event, venue: 'Hall B', registrationOpen: true });
   assert.equal(p.practice, true); assert.equal(p.demo, true); assert.equal(p.teams.length, 16); assert.equal(p.event.venue, 'Hall B'); assert.equal(p.event.registrationOpen, false);
   assert.equal(publicState(p).teams[0].players[0].mobile, undefined);
+});
+test('walkover awards an unplayed match without check-in, starts no rest period, and can be undone', () => {
+  const s = setup(4); createDraw(s, false); s.event.restMinutes = 10;
+  const [m1, m2, final] = s.matches;
+  assign(s, m2.id, 1, 1000); start(s, m2.id, 1000); result(s, m2.id, { a: 1, b: 3 }, 601000);
+  s.teams.find(t => t.id === m1.teamB).checkedIn = false; assert.equal(eligible(s, m1), 'Awaiting check-in');
+  assert.throws(() => walkover(s, m1.id, 'CAR-999', ''), /which team/);
+  walkover(s, m1.id, m1.teamA, ' Team B absent ', 700000, 'Asha Admin');
+  assert.equal(m1.status, 'completed'); assert.equal(m1.winner, m1.teamA); assert.equal(m1.walkover, 'Team B absent'); assert.equal(m1.official, 'Asha Admin'); assert.equal(m1.coinsA, undefined);
+  assert.equal(final.status, 'ready'); assert.deepEqual([final.teamA, final.teamB], [m1.teamA, m2.winner]);
+  assert.equal(eligible(s, final, 1200000), 'Rest period', 'the played match still needs rest'); assert.equal(eligible(s, final, 1201000), '', 'a walkover does not start a rest period');
+  assert.throws(() => walkover(s, m1.id, m1.teamA, ''), /not started/);
+  undoWalkover(s, m1.id, 800000);
+  assert.equal(m1.status, 'ready'); assert.equal(m1.winner, null); assert.equal(m1.walkover, undefined); assert.equal(final.status, 'waiting'); assert.equal(final.teamA, null);
+  // A called match can be awarded too; its board is freed without a reset period.
+  s.teams.find(t => t.id === m1.teamB).checkedIn = true; assign(s, m1.id, 2, 900000); walkover(s, m1.id, m1.teamB, '', 900000);
+  assert.equal(m1.board, null); assert.equal(m1.walkover, 'Opponent did not show'); assert.equal(final.teamA, m1.teamB);
+  assign(s, final.id, 2, 1300000); assert.equal(final.board, 2);
+});
+test('a recorded score can be corrected until the next round is called; the bracket is re-derived', () => {
+  const s = setup(4); createDraw(s, false); s.event.resetMinutes = 0;
+  const [m1, m2, final] = s.matches;
+  assign(s, m1.id, 1, 0); start(s, m1.id, 0); result(s, m1.id, { a: 4, b: 0 }, 600000, 'Omar Official');
+  assert.equal(m1.winner, m1.teamB); assert.equal(m1.official, 'Omar Official');
+  assign(s, m2.id, 2, 0); start(s, m2.id, 0); result(s, m2.id, { a: 2, b: 5 }, 600000);
+  assert.equal(final.status, 'ready'); assert.equal(final.teamA, m1.teamB);
+  for (const bad of [{ a: 10, b: 0 }, { a: '', b: 1 }]) assert.throws(() => correctResult(s, m1.id, bad), /whole numbers/);
+  assert.throws(() => correctResult(s, m1.id, { a: 3, b: 3 }), /tie-break winner/);
+  correctResult(s, m1.id, { a: 0, b: 4 }, 700000, 'Asha Admin');
+  assert.equal(m1.winner, m1.teamA); assert.equal(m1.corrected, true); assert.equal(m1.official, 'Asha Admin'); assert.equal(m1.completedAt, 600000, 'the original time is kept');
+  assert.equal(final.status, 'ready'); assert.deepEqual([final.teamA, final.teamB], [m1.teamA, m2.winner]); assert.match(s.activity[0].message, /M01 corrected/);
+  correctResult(s, m1.id, { a: 2, b: 2, tieWinner: m1.teamB, reason: 'Replay won by B' }); assert.equal(m1.winner, m1.teamB); assert.equal(m1.tieReason, 'Replay won by B'); assert.equal(final.teamA, m1.teamB);
+  assign(s, final.id, 1, 700000);
+  assert.throws(() => correctResult(s, m1.id, { a: 0, b: 4 }), /already on a board/);
+  unassign(s, final.id); correctResult(s, m1.id, { a: 0, b: 4 }); assert.equal(final.teamA, m1.teamA);
+  assign(s, final.id, 1, 700000); start(s, final.id, 700000); result(s, final.id, { a: 1, b: 2 }, 1300000);
+  assert.throws(() => correctResult(s, m1.id, { a: 4, b: 0 }), /already been played/);
+  assert.throws(() => correctResult(s, 'M99', { a: 1, b: 2 }), /Only a played/);
 });
