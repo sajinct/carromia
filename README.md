@@ -15,7 +15,7 @@ Preview at http://localhost:3001/carromia/. Hash routes (for example `#/admin` a
 
 ## Run locally
 
-Requires Node.js 22 or newer.
+Requires Node.js 22.9 or newer.
 
 ```powershell
 npm install
@@ -29,7 +29,7 @@ $env:ADMIN_PASSWORD = 'your-private-password'
 npm start
 ```
 
-The server binds to **127.0.0.1 only**. It is a local first version, not a publicly deployed service. Open multiple browser tabs to test realtime updates. Live connections are capped at 200 (`MAX_STREAMS`); extra viewers fall back to refreshing every 15 seconds.
+The server binds to **127.0.0.1 only** unless `HOST` is set. It is a local first version, not a publicly deployed service. Open multiple browser tabs to test realtime updates. Live connections are capped at 200 (`MAX_STREAMS`); extra viewers fall back to refreshing every 15 seconds.
 
 ## Included
 
@@ -59,9 +59,30 @@ Existing match timers keep the duration set at their start. Settings affect futu
 
 QR URLs use `PUBLIC_URL` if provided, otherwise `http://localhost:3000`. A phone cannot reach this local preview via its own localhost. Configure an HTTPS public origin and production hosting before distributing codes to players. A QR opens a check-in confirmation for a signed-in official; scanning alone never changes attendance.
 
+## Supabase (shared storage and named officials)
+
+When `SUPABASE_URL` and `SUPABASE_SECRET_KEY` are set, the server stores the event in Supabase instead of the local file, and officials sign in with their own email and password. Without them, the app keeps its local file and single desk password.
+
+1. **Create the tables.** In the Supabase dashboard open **SQL Editor**, paste `supabase/migrations/20260929000000_carromia_init.sql`, and run it. (With the Supabase CLI: `supabase link --project-ref vzxcqpgwvknonkhjinuk` then `supabase db push`.)
+2. **Add your keys.** Copy `.env.example` to `.env` and paste the **Secret key** from Project Settings → API Keys. `.env` is git-ignored; never commit it or put the secret key in browser code.
+3. **Add officials.** Admins can change settings, create the draw, reset and download backups. Officials can check in teams, run boards and record results.
+
+   ```powershell
+   npm run add-official -- asha@example.org "Asha Admin" admin
+   npm run add-official -- omar@example.org "Omar Official" official
+   ```
+
+   New accounts get a temporary password printed once; officials can change it through Supabase's password reset. Re-running the command changes the name or role of an existing official.
+4. **Optionally import local data:** `npm run import:supabase` copies `data/tournament.json` (it refuses to overwrite an existing Supabase event unless you add `--replace`).
+5. `npm start`. The startup message confirms Supabase storage.
+
+How it works: the event is one row in `public.tournament` with a version number. Every save must match the version the server last loaded, so two servers or a stale process can never overwrite each other; the losing request gets "please try again" and a refreshed view. Every sign-in, registration and desk action is written to `public.audit_log` with the official's name, and recorded results show who entered them. Row level security blocks all browser access to these tables; only the server's secret key can read them.
+
+Run a single server instance. A second instance cannot overwrite data, but it shows stale screens until one of its own saves is rejected and it reloads.
+
 ## Data and backups
 
-Data lives in `data/tournament.json` (or the `DATA_DIR` environment variable). Keep that directory private and backed up. **Settings → Download backup** includes contacts and QR tokens. To restore, stop the server, replace `data/tournament.json` with a compatible backup, and restart. Reset requires typing RESET and clears teams, matches, and results.
+Without Supabase, data lives in `data/tournament.json` (or the `DATA_DIR` environment variable). Keep that directory private and backed up. **Settings → Download backup** includes contacts and QR tokens. To restore, stop the server, replace `data/tournament.json` with a compatible backup, and restart. Reset requires typing RESET and clears teams, matches, and results.
 
 ## Validation
 
@@ -73,6 +94,6 @@ Tests cover bracket completion for every team count from 2–128, byes, check-in
 
 ## Before a real event
 
-This release is a local functional prototype. Production setup remains: HTTPS hosting, a shared transactional database (Supabase was proposed), named official accounts and audit history, abuse protection beyond the basic per-connection registration limit (30 per 10 minutes), and backup/restore operations. The current file store supports one server process, and the desk uses one password with in-memory sessions. It does not support concurrent server instances, result corrections after advancement, no-show forfeits, or draw editing.
+This release is a local functional prototype. Production setup remains: HTTPS hosting, abuse protection beyond the basic per-connection registration limit (30 per 10 minutes), and backup/restore operations. Supabase storage and named officials are available (see above); desk sign-ins are held in server memory, so a restart signs officials out. It does not support concurrent server instances, result corrections after advancement, no-show forfeits, or draw editing.
 
 Confirm event date, deadlines, fees, team capacity, tie-break/queen/foul/no-show rules, and rest policy. No payment collection or unconfirmed rules are implemented. The public information page describes the confirmed 10-minute rule; if the committee changes that rule, update the copy as well as the timer setting.

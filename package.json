@@ -3,7 +3,17 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "scripts": { "start": "node server.mjs", "test": "node --test tests/*.test.mjs", "build:pages": "node scripts/build-pages.mjs" },
-  "dependencies": { "qrcode": "^1.5.4" },
-  "engines": { "node": ">=22" }
+  "scripts": {
+    "start": "node --env-file-if-exists=.env server.mjs",
+    "test": "node --test tests/*.test.mjs",
+    "build:pages": "node scripts/build-pages.mjs",
+    "add-official": "node --env-file-if-exists=.env scripts/add-official.mjs",
+    "import:supabase": "node --env-file-if-exists=.env scripts/import-to-supabase.mjs"
+  },
+  "dependencies": {
+    "qrcode": "^1.5.4"
+  },
+  "engines": {
+    "node": ">=22.9"
+  }
 }
