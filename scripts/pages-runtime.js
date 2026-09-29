@@ -97,6 +97,15 @@ async function view(user) {
   return { ...state, practice, practiceAvailable: Boolean(user) || practice, practiceLinks: practice ? { live: practiceLink('/live'), register: practiceLink('/register'), desk: practiceLink('/admin') } : null, teams, activity: user ? state.activity : [], matches: state.matches.map(m => ({ ...m, blockedReason: eligible(state, m, now()) })), isAdmin: Boolean(user), user: user && { name: user.name, role: user.role }, authMode: 'supabase', localDemo: false, serverTime: now() };
 }
 
+// Officials are managed by the 'officials' Edge Function (supabase/functions/officials), which holds
+// the service key and checks the caller is an admin; the browser only sends the admin's own token.
+const officialActions = { officials: 'list', 'official-add': 'add', 'official-update': 'update', 'official-reset': 'reset-password', 'official-remove': 'remove' };
+async function manageOfficials(user, action, input) {
+  fail(!user, 'Sign in to the tournament desk first.');
+  try { return await request('/functions/v1/officials', { method: 'POST', token: user.token, body: { ...input, action } }); }
+  catch (error) { throw error.status === 404 && !error.message.includes('Official') ? new Error('Officials management isn’t set up yet. Deploy the “officials” Edge Function (see README).') : error; }
+}
+
 export async function remoteApi(path, input = {}) {
   // Check-in QR codes keep the device in the same event (a practice QR opens practice mode).
   if (path.startsWith('qr?')) { const token = encodeURIComponent(new URLSearchParams(path.slice(3)).get('token')); return qrCode(practiceOn() ? practiceLink(`/checkin?token=${token}`) : `${siteUrl()}#/checkin?token=${token}`); }
@@ -112,6 +121,7 @@ export async function remoteApi(path, input = {}) {
 
   const user = await official();
   if (path === 'state') return view(user);
+  if (officialActions[path]) return manageOfficials(user, officialActions[path], input);
   fail(!user, 'Sign in to the tournament desk first.');
   // In practice mode every official may try every action; the real event keeps admin-only actions.
   fail(adminOnly.has(path) && user.role !== 'admin' && !(practiceOn() && path !== 'backup'), 'Only an event admin can do this.');

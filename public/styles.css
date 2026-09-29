@@ -139,3 +139,21 @@ a.ph-info-link:hover strong,.ph-info>a:hover strong{text-decoration:underline;te
 }
 @media(max-width:600px){.table-wrap .queue-table td{padding:0;min-width:0;font-size:13px}.table-wrap .queue-table td:nth-child(2) strong{font-size:13px}}
 @media(max-width:600px){.queue-panel .table-wrap table{min-width:0}}
+
+.officials-layout{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr);gap:18px;align-items:start}
+.official-card{display:grid;grid-template-columns:1fr auto;gap:8px 12px;align-items:start;padding:14px 0;border-bottom:1px solid var(--line)}
+.official-card:last-child{border-bottom:0}
+.official-main strong{display:block;font-size:14px}
+.official-main small{color:var(--muted);font-size:11px;margin-top:2px}
+.official-main .you{font-size:10px;font-weight:600;color:#56813e;background:#ecf3e5;border-radius:4px;padding:1px 6px;margin-left:4px}
+.official-actions{grid-column:1/-1;display:flex;flex-wrap:wrap;gap:8px}
+.officials-loading{padding:14px 0}
+.official-form-card form{display:grid;gap:4px}
+.credentials{display:grid;grid-template-columns:auto 1fr;gap:8px 14px;margin:16px 0 4px;padding:14px;border:1px solid var(--line);border-radius:10px;background:#fafbf6}
+.credentials dt{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px}
+.credentials dd{margin:0;font-weight:600;overflow-wrap:anywhere}
+.credentials .mono{font-family:ui-monospace,Consolas,monospace;font-size:15px;letter-spacing:.5px}
+@media(max-width:850px){.officials-layout{grid-template-columns:1fr}}
+#officials-list{padding:0 22px 6px}
+.official-form-card h2{margin-bottom:14px}
+@media(max-width:600px){#officials-list{padding:0 16px 4px}}
