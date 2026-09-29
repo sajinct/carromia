@@ -22,6 +22,8 @@ function mockSupabase() {
     if (url.pathname === '/rest/v1/audit_log' && req.method === 'POST') { db.audit.push(body); return reply(201); }
     if (url.pathname === '/rest/v1/officials') return reply(200, officials[q('user_id')] ? [officials[q('user_id')]] : []);
     if (url.pathname === '/auth/v1/token') { const u = users[body.email]; return u?.password === body.password ? reply(200, { access_token: 'jwt', user: { id: u.id, email: body.email } }) : reply(400, { error_description: 'Invalid login credentials' }); }
+    const account = /^\/auth\/v1\/admin\/users\/(.+)$/.exec(url.pathname)?.[1];
+    if (account && req.method === 'PUT') { Object.values(users).find(u => u.id === account).password = body.password; return reply(200, {}); }
     reply(404, { message: 'not mocked' });
   });
   return { db, server };
@@ -61,10 +63,19 @@ test('Supabase mode: named officials, roles, audit trail, and conflict-safe save
   assert.equal(db.row.state.matches.find(m => m.id === ready.id).status, 'called');
   assert.equal(db.row.state.event.venue, 'Changed elsewhere', 'the retry builds on the other instance’s change');
 
+  // An official changes their own password; the current one must be right.
+  assert.equal((await post('change-password', { current: 'official-pass', password: 'new-secret-1' })).status, 401, 'signed-out visitors cannot change a password');
+  assert.equal((await post('change-password', { current: 'wrong', password: 'new-secret-1' }, official)).status, 401);
+  assert.equal((await post('change-password', { current: 'official-pass', password: 'short' }, official)).status, 400);
+  assert.equal((await post('change-password', { current: 'official-pass', password: 'new-secret-1' }, official)).status, 200);
+  assert.equal((await post('login', { email: 'omar@example.org', password: 'official-pass' })).status, 401, 'the old password stops working');
+  await login('omar@example.org', 'new-secret-1');
+  assert.deepEqual((await state(official)).user, { name: 'Omar Official', role: 'official' }, 'they stay signed in');
+
   await new Promise(resolve => setTimeout(resolve, 100));
   const actions = db.audit.map(a => `${a.actor_name}:${a.action}`);
-  assert.ok(actions.includes('Public registration:register')); assert.ok(actions.includes('Omar Official:checkin')); assert.ok(actions.includes('Asha Admin:draw')); assert.ok(actions.includes('Omar Official:assign'));
-  assert.ok(!JSON.stringify(db.audit).includes('pass'), 'passwords never reach the audit log');
+  assert.ok(actions.includes('Public registration:register')); assert.ok(actions.includes('Omar Official:checkin')); assert.ok(actions.includes('Asha Admin:draw')); assert.ok(actions.includes('Omar Official:assign')); assert.ok(actions.includes('Omar Official:change-password'));
+  for (const secret of ['admin-pass', 'official-pass', 'new-secret-1', 'wrong']) assert.ok(!JSON.stringify(db.audit).includes(secret), 'passwords never reach the audit log');
   assert.equal(db.public.teams.length, 4); assert.ok(!JSON.stringify(db.public).includes('9111111111'), 'the public copy has no mobile numbers'); assert.ok(!JSON.stringify(db.public).includes('checkinToken'));
   assert.equal(db.badKeyHeaders, 0, 'sb_secret keys are sent only in the apikey header');
 });

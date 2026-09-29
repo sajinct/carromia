@@ -23,6 +23,7 @@ https://sajinct.github.io/carromia/ is the live event site. The static app talks
    select id, 'Your Name', 'admin' from auth.users where email = 'you@example.org';
    ```
 4. **Manage officials from the app (recommended):** Dashboard → **Edge Functions** → **Deploy a new function** → **Via editor**. Name it `officials`, replace the sample code with the contents of `supabase/functions/officials/index.ts`, and deploy. Then open the function's **Details** and turn **off** *Enforce JWT verification* (the function checks the caller itself). Admins then get an **Officials** page in the desk to add officials (a temporary password is generated and shown once), change roles, reset passwords and remove accounts. It refuses anyone who is not an admin, and admins can't remove themselves or their own admin role. Steps 2–3 are only needed for your first admin.
+   Every official can change their own password: tap the initials at the top right of the desk (or **Change password** in the sidebar), enter the current password and the new one (at least 8 characters). They stay signed in on that device. An official who has forgotten their password asks an admin to reset it.
 5. Recommended: **Authentication → Sign In / Providers → turn off "Allow new users to sign up"**, so only accounts you create exist.
 
 ### Registration, practice mode and team removal
@@ -102,7 +103,7 @@ When `SUPABASE_URL` and `SUPABASE_SECRET_KEY` are set, the server stores the eve
    npm run add-official -- omar@example.org "Omar Official" official
    ```
 
-   New accounts get a temporary password printed once; officials can change it through Supabase's password reset. Re-running the command changes the name or role of an existing official.
+   New accounts get a temporary password printed once; officials change it in the desk under **Change password**. Re-running the command changes the name or role of an existing official.
 4. **Optionally import local data:** `npm run import:supabase` copies `data/tournament.json` (it refuses to overwrite an existing Supabase event unless you add `--replace`).
 5. `npm start`. The startup message confirms Supabase storage.
 

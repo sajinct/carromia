@@ -34,6 +34,11 @@ function fakeSupabase() {
       case '/rest/v1/officials': return reply(200, caller ? [caller.official] : []);
       case '/auth/v1/token': { const u = users[body.email]; return u?.password === body.password ? reply(200, { access_token: `token-${u.id}`, refresh_token: 'r', expires_at: Date.now() / 1000 + 3600, user: { id: u.id } }) : reply(400, { error_description: 'Invalid login credentials' }); }
       case '/auth/v1/logout': return reply(204);
+      case '/auth/v1/user': {
+        if (!caller) return reply(401, { msg: 'Invalid token' });
+        if (init.method === 'PUT') { if (body.password === caller.password) return reply(422, { msg: 'New password should be different from the old password.' }); caller.password = body.password; }
+        return reply(200, { id: caller.id, email: Object.keys(users).find(email => users[email] === caller) });
+      }
       case '/rest/v1/rpc/register_team': {
         const main = db.rows[body.p_event ?? 'main'];
         if (main.state.demo) return reply(400, { message: 'Registration will open soon. Please check back.' });
@@ -78,6 +83,18 @@ test('live Pages runtime: public view, official sign-in, roles, conflict retry, 
   await assert.rejects(remoteApi('reset', { confirm: 'RESET' }), /Only an event admin/);
   db.raceOnce = true; await remoteApi('checkin', { id: 'CAR-001', checkedIn: true });
   assert.equal(db.rows.main.state.event.venue, 'Changed elsewhere', 'the retry builds on the other official’s save');
+
+  // An official changes their own password: the current one is checked and they stay signed in.
+  await assert.rejects(remoteApi('change-password', { current: 'wrong', password: 'new-official-pass' }), /current password is incorrect/);
+  await assert.rejects(remoteApi('change-password', { current: 'official-pass', password: 'short' }), /8 characters/);
+  await assert.rejects(remoteApi('change-password', { current: 'official-pass', password: 'official-pass' }), /different/);
+  await remoteApi('change-password', { current: 'official-pass', password: 'new-official-pass' });
+  assert.equal((await remoteApi('state')).isAdmin, true);
+  await remoteApi('logout');
+  await assert.rejects(remoteApi('change-password', { current: 'new-official-pass', password: 'another-pass-1' }), /Sign in/);
+  await assert.rejects(remoteApi('login', { email: 'omar@example.org', password: 'official-pass' }), /Incorrect email or password/);
+  await remoteApi('login', { email: 'omar@example.org', password: 'new-official-pass' });
+  await remoteApi('change-password', { current: 'new-official-pass', password: 'official-pass' });
 
   // The admin opens the real event for registration; the public registers.
   await remoteApi('logout'); await remoteApi('login', { email: 'asha@example.org', password: 'admin-pass' });

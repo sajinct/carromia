@@ -82,6 +82,17 @@ const server = http.createServer(async (req, res) => {
       if (url.pathname === '/api/register') { if (limited(`register:${req.socket.remoteAddress}`, 30, 600000)) return send(res, 429, { error: 'Too many registrations from this connection. Try again in a few minutes.' }); const team = await change(() => { fail(state.demo, 'Sample tournament is active. Start a fresh event from Settings to accept registrations.'); return addTeam(state, input); }); store.audit({ actor_name: 'Public registration', action: 'register', detail: { team: team.id, name: team.name } }); return send(res, 201, { team }); }
       const user = official(req);
       if (!user) return send(res, 401, { error: 'Sign in to the tournament desk first.' });
+      if (url.pathname === '/api/change-password') {
+        if (!supabase) return send(res, 400, { error: 'The desk password is set with ADMIN_PASSWORD when the server starts.' });
+        if (limited(`password:${user.id}`, 5, 60000)) return send(res, 429, { error: 'Too many attempts. Try again in a minute.' });
+        const current = String(input.current || ''), next = String(input.password || '');
+        if (next.length < 8) return send(res, 400, { error: 'Passwords need at least 8 characters.' });
+        if (next === current) return send(res, 400, { error: 'Choose a new password that is different from your current one.' });
+        if (!await store.signIn(user.email, current)) return send(res, 401, { error: 'Your current password is incorrect.' });
+        try { await store.setPassword(user.id, next); }
+        catch (error) { if (error.status !== 422) throw error; return send(res, 400, { error: 'This password was not accepted. Choose a longer or less common one.' }); }
+        store.audit({ actor_id: user.id, actor_name: user.name, action: 'change-password' }); return send(res, 200, { ok: true });
+      }
       const action = actions[url.pathname.slice(5)];
       if (!action) return send(res, 404, { error: 'Endpoint not found.' });
       if (action.admin && user.role !== 'admin') return send(res, 403, { error: 'Only an event admin can do this.' });

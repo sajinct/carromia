@@ -96,6 +96,23 @@ async function signIn(input) {
   return { ok: true };
 }
 
+// An official changes their own password. Signing in again with the current password proves it
+// is them, and gives the recent sign-in Supabase asks for before a password change.
+async function changePassword(input) {
+  const token = await accessToken();
+  fail(!token, 'Sign in to the tournament desk first.');
+  const current = String(input.current || ''), password = String(input.password || '');
+  fail(password.length < 8, 'Passwords need at least 8 characters.');
+  fail(password === current, 'Choose a new password that is different from your current one.');
+  const { email } = await request('/auth/v1/user', { token });
+  let fresh;
+  try { fresh = await request('/auth/v1/token?grant_type=password', { method: 'POST', body: { email, password: current } }); }
+  catch (error) { throw new Error(error.status === 400 ? 'Your current password is incorrect.' : error.message); }
+  await request('/auth/v1/user', { method: 'PUT', token: fresh.access_token, body: { password, current_password: current } });
+  writeSession({ ...readSession(), access_token: fresh.access_token, refresh_token: fresh.refresh_token, expires_at: fresh.expires_at });
+  return { ok: true };
+}
+
 // What the screens render: the followed event, with private details only for officials.
 async function view(user) {
   const { state } = await load(user), practice = eventId() === 'practice';
@@ -119,6 +136,7 @@ export async function remoteApi(path, input = {}) {
   if (path === 'practice') { setPractice(input.on === true); return { ok: true }; }
   await syncClock();
   if (path === 'login') return signIn(input);
+  if (path === 'change-password') return changePassword(input);
   if (path === 'logout') { const token = readSession()?.access_token; writeSession(null); if (token) request('/auth/v1/logout', { method: 'POST', token }).catch(() => {}); return { ok: true }; }
   if (path === 'register') {
     const players = Array.isArray(input.players) ? input.players : [];
