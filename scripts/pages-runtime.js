@@ -1,7 +1,7 @@
-import { seedDemo, assign, start, result, eligible, log, fail } from './tournament-browser.js';
+import { seedDemo, assign, start, result, eligible, log, fail, updateSettings } from './tournament-browser.js';
 
 export const pagesMode = true;
-const key = 'carromia-pages-demo-v1';
+const key = 'carromia-pages-demo-v2';
 function read() {
   try { const data = JSON.parse(localStorage.getItem(key)); if (data?.version === 1 && data.demo === true) return data; } catch {}
   return seedDemo();
@@ -28,14 +28,7 @@ export async function demoApi(path, input = {}) {
         const m = state.matches.find(m => m.id === input.id); fail(!m || m.status !== 'called', 'Only called matches can return to the queue.');
         m.status = 'ready'; m.board = null; log(state, `${m.id} returned to queue`); break;
       }
-      case 'settings': {
-        for (const key of ['name', 'year', 'venue', 'date']) if (input[key] !== undefined) state.event[key] = String(input[key]).trim().slice(0, 120);
-        fail(!state.event.name || !state.event.venue, 'Event name and venue are required.');
-        for (const [key, min, max] of [['durationMinutes', 1, 60], ['resetMinutes', 0, 30], ['restMinutes', 0, 60]]) {
-          const value = Number(input[key]); fail(!Number.isInteger(value) || value < min || value > max, `Invalid value for ${key}.`); state.event[key] = value;
-        }
-        state.event.registrationOpen = false; log(state, 'Demo settings updated in this browser'); break;
-      }
+      case 'settings': updateSettings(state, input); log(state, 'Demo settings updated in this browser'); break;
       case 'reset': fail(input.confirm !== 'RESET', 'Type RESET to reset the demo.'); state = seedDemo(); break;
       case 'logout': return { ok: true };
       default: throw new Error('This is a public demo. Real registration and shared event management need a hosted backend.');

@@ -4,7 +4,7 @@ import { join, extname } from 'node:path';
 import { randomBytes, timingSafeEqual } from 'node:crypto';
 import QRCode from 'qrcode';
 import { fileStore, supabaseStore, ConflictError } from './lib/store.mjs';
-import { emptyState, addTeam, createDraw, assign, start, result, seedDemo, eligible, log, fail } from './lib/tournament.mjs';
+import { emptyState, addTeam, createDraw, assign, start, result, seedDemo, eligible, log, fail, updateSettings } from './lib/tournament.mjs';
 
 const port = Number(process.env.PORT || 3000);
 const host = process.env.HOST || '127.0.0.1';
@@ -92,7 +92,7 @@ const server = http.createServer(async (req, res) => {
           case '/api/start': start(state, input.id); break;
           case '/api/result': { result(state, input.id, input); const m = state.matches.find(m => m.id === input.id); if (m.status === 'completed') m.official = user.name; break; }
           case '/api/unassign': { const m = state.matches.find(m => m.id === input.id); fail(!m || m.status !== 'called', 'Only a called match can be returned to the queue.'); m.status = 'ready'; m.board = null; log(state, `${m.id} returned to queue`); break; }
-          case '/api/settings': { const e = state.event; for (const key of ['name', 'year', 'venue', 'date']) if (input[key] !== undefined) e[key] = String(input[key]).trim().slice(0, 120); fail(!e.name || !e.venue, 'Event name and venue are required.'); for (const [key, min, max] of [['durationMinutes', 1, 60], ['resetMinutes', 0, 30], ['restMinutes', 0, 60]]) { const n = Number(input[key]); fail(!Number.isInteger(n) || n < min || n > max, `Invalid value for ${key}.`); e[key] = n; } e.registrationOpen = state.matches.length ? false : Boolean(input.registrationOpen); log(state, 'Event settings updated'); break; }
+          case '/api/settings': updateSettings(state, input); log(state, 'Event settings updated'); break;
           case '/api/demo': fail(state.teams.length > 0, 'Start a fresh event before loading sample teams.'); { const event = state.event; state = seedDemo(); state.event = { ...event, registrationOpen: false }; break; }
           case '/api/reset': fail(input.confirm !== 'RESET', 'Type RESET to start a fresh event.'); state = { ...emptyState(), event: { ...state.event, registrationOpen: true } }; break;
           default: throw Object.assign(new Error('Endpoint not found.'), { status: 404 });
