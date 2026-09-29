@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { readFileSync, existsSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { seedDemo, publicState, addTeam } from '../lib/tournament.mjs';
+import { seedDemo, publicState, addTeam, playerPhotos } from '../lib/tournament.mjs';
+import { centre, player, photo } from './registration-fixture.mjs';
 const root = join(import.meta.dirname, '..');
 test('Pages build is portable to a repository subpath and contains only static assets', () => {
   execFileSync(process.execPath, ['scripts/build-pages.mjs'], { cwd: root });
@@ -19,7 +20,7 @@ test('Pages build is portable to a repository subpath and contains only static a
 function fakeSupabase() {
   // The registration deadline is removed so this test passes on any date.
   const sample = seedDemo(); sample.event.registrationDeadline = '';
-  const db = { rows: { main: { version: 1, state: sample } }, pub: { main: { version: 1, state: publicState(sample) } }, saves: [], raceOnce: false };
+  const db = { rows: { main: { version: 1, state: sample } }, pub: { main: { version: 1, state: publicState(sample) } }, saves: [], photos: [], raceOnce: false };
   Object.defineProperty(db, 'public', { get: () => db.pub.main });
   const users = { 'asha@example.org': { id: 'u1', password: 'admin-pass', official: { name: 'Asha Admin', role: 'admin' } }, 'omar@example.org': { id: 'u2', password: 'official-pass', official: { name: 'Omar Official', role: 'official' } } };
   const byToken = token => Object.values(users).find(u => `token-${u.id}` === token);
@@ -33,6 +34,7 @@ function fakeSupabase() {
       case '/rest/v1/tournament_public': return reply(200, db.pub[id] ? [structuredClone(db.pub[id])] : []);
       case '/rest/v1/tournament': return reply(200, caller?.official && db.rows[id] ? [structuredClone(db.rows[id])] : []);
       case '/rest/v1/officials': return reply(200, caller ? [caller.official] : []);
+      case '/rest/v1/player_photos': return reply(200, caller?.official ? db.photos.filter(p => p.event === url.searchParams.get('event').replace('eq.', '')) : []);
       case '/auth/v1/token': { const u = users[body.email]; return u?.password === body.password ? reply(200, { access_token: `token-${u.id}`, refresh_token: 'r', expires_at: Date.now() / 1000 + 3600, user: { id: u.id } }) : reply(400, { error_description: 'Invalid login credentials' }); }
       case '/auth/v1/logout': return reply(204);
       case '/auth/v1/user': {
@@ -43,7 +45,7 @@ function fakeSupabase() {
       case '/rest/v1/rpc/register_team': {
         const main = db.rows[body.p_event ?? 'main'];
         if (main.state.demo) return reply(400, { message: 'Registration will open soon. Please check back.' });
-        try { const team = addTeam(main.state, { name: body.p_name, parish: body.p_parish, players: body.p_players, primaryContact: body.p_primary, lunch: body.p_lunch, adults: body.p_adults }); main.version++; db.pub[body.p_event ?? 'main'] = { version: main.version, state: publicState(main.state) }; return reply(200, { team }); }
+        try { const images = playerPhotos({ players: body.p_players }), team = addTeam(main.state, { name: body.p_name, forane: body.p_forane, parish: body.p_parish, centreType: body.p_centre_type, players: body.p_players, primaryContact: body.p_primary, lunch: body.p_lunch, adults: body.p_adults }); images.forEach((image, player) => db.photos.push({ event: body.p_event ?? 'main', team_id: team.id, player, image })); main.version++; db.pub[body.p_event ?? 'main'] = { version: main.version, state: publicState(main.state) }; return reply(200, { team }); }
         catch (error) { return reply(400, { message: error.message }); }
       }
       case '/rest/v1/rpc/save_tournament': {
@@ -67,17 +69,17 @@ test('live Pages runtime: public view, official sign-in, roles, conflict retry, 
   globalThis.fetch = db.fetch; globalThis.location = { origin: 'https://sajinct.github.io', pathname: '/carromia/', search: '' };
   t.after(() => { globalThis.fetch = realFetch; delete globalThis.localStorage; delete globalThis.location; });
   const { remoteApi } = await import('../dist/runtime.js');
-  const players = [{ name: 'Arun', mobile: '9111111111' }, { name: 'Joel', mobile: '9222222222' }], adults = true;
+  const players = [player('Arun', '9111111111'), player('Joel', '9222222222')], adults = true, where = centre(0);
 
   let state = await remoteApi('state');
   assert.equal(state.isAdmin, false); assert.equal(state.demo, true); assert.equal(state.teams.length, 16); assert.equal(state.teams[0].players[0].mobile, undefined); assert.equal(state.practiceAvailable, false);
-  await assert.rejects(remoteApi('register', { name: 'Real team', parish: 'P', players, adults }), /open soon/);
+  await assert.rejects(remoteApi('register', { name: 'Real team', ...where, players, adults }), /open soon/);
   await assert.rejects(remoteApi('assign', { id: 'M05', board: 1 }), /Sign in/);
   await assert.rejects(remoteApi('login', { email: 'omar@example.org', password: 'wrong' }), /Incorrect email or password/);
 
   await remoteApi('login', { email: 'Omar@example.org ', password: 'official-pass' });
   state = await remoteApi('state');
-  assert.equal(state.isAdmin, true); assert.deepEqual(state.user, { name: 'Omar Official', role: 'official' }); assert.equal(state.teams[0].players[0].mobile, '9000000000'); assert.equal(state.teams[0].checkinToken, undefined); assert.equal(state.practice, false);
+  assert.equal(state.isAdmin, true); assert.deepEqual(state.user, { name: 'Omar Official', role: 'official' }); assert.equal(state.teams[0].players[0].mobile, '9000000000'); assert.ok(state.teams[0].checkinToken, 'officials can print a team’s form again'); assert.equal(state.practice, false);
   await remoteApi('unassign', { id: 'M01' }); await remoteApi('assign', { id: 'M05', board: 1 }); await remoteApi('start', { id: 'M05' });
   assert.equal(db.rows.main.state.matches.find(m => m.id === 'M05').status, 'playing');
   assert.equal(db.public.state.matches.find(m => m.id === 'M05').status, 'playing'); assert.ok(!JSON.stringify(db.public).includes('9000000000'), 'public copy has no mobiles');
@@ -103,11 +105,15 @@ test('live Pages runtime: public view, official sign-in, roles, conflict retry, 
   await remoteApi('reset', { confirm: 'RESET' });
   await assert.rejects(remoteApi('demo'), /practice mode/, 'sample teams never go into the real event');
   await remoteApi('logout');
-  const { team } = await remoteApi('register', { name: 'Real Team', parish: 'St. Thomas', players, lunch: 1, adults });
-  assert.equal(team.id, 'CAR-001'); assert.equal((await remoteApi('state')).teams.length, 1);
+  await assert.rejects(remoteApi('register', { name: 'Real Team', ...where, parish: 'Nowhere', players, adults }), /forane or zone/);
+  await assert.rejects(remoteApi('register', { name: 'Real Team', ...where, players: [players[0], player('Joel', '9222222222', false)], adults }), /photo of each player/);
+  const { team } = await remoteApi('register', { name: 'Real Team', ...where, players, lunch: 1, adults });
+  assert.equal(team.id, 'CAR-001'); assert.equal(team.forane, where.forane); assert.equal(team.players[0].idLast4, '1234'); assert.equal((await remoteApi('state')).teams.length, 1);
+  await assert.rejects(remoteApi('photos'), /Sign in/);
 
   // Practice mode: a separate sample event; the real event and the public copy are untouched.
   await remoteApi('login', { email: 'omar@example.org', password: 'official-pass' });
+  assert.deepEqual(await remoteApi('photos'), { 'CAR-001': [photo, photo] });
   const publicBefore = JSON.stringify(db.public);
   await remoteApi('practice', { on: true });
   state = await remoteApi('state');
@@ -121,7 +127,7 @@ test('live Pages runtime: public view, official sign-in, roles, conflict retry, 
   // A TV or phone that is not signed in follows practice after opening a practice link.
   await remoteApi('logout');
   state = await remoteApi('state'); assert.equal(state.practice, true); assert.equal(state.isAdmin, false); assert.equal(state.teams.length, 0); assert.equal(state.practiceLinks.live, 'https://sajinct.github.io/carromia/?practice=1#/live');
-  const { team: practiceTeam } = await remoteApi('register', { name: 'Practice Pair', parish: 'P', players, adults });
+  const { team: practiceTeam } = await remoteApi('register', { name: 'Practice Pair', ...where, players, adults });
   assert.equal(practiceTeam.id, 'CAR-001'); assert.equal(db.rows.practice.state.teams.length, 1); assert.equal(db.rows.main.state.teams.length, 1, 'practice registrations stay out of the real event');
   assert.equal((await remoteApi('state')).teams[0].players[0].mobile, undefined);
   await remoteApi('demo').catch(() => {}); await remoteApi('login', { email: 'omar@example.org', password: 'official-pass' });
@@ -134,7 +140,7 @@ test('live Pages runtime: public view, official sign-in, roles, conflict retry, 
   await remoteApi('remove-team', { id: 'CAR-001' });
   assert.equal((await remoteApi('state')).teams.length, 0); assert.equal(db.public.state.teams.length, 0);
   await remoteApi('logout');
-  assert.equal((await remoteApi('register', { name: 'Next Team', parish: 'P', players, adults })).team.id, 'CAR-002', 'removed IDs are not reused');
+  assert.equal((await remoteApi('register', { name: 'Next Team', ...where, players, adults })).team.id, 'CAR-002', 'removed IDs are not reused');
 
   assert.deepEqual(db.saves.map(s => `${s.event}:${s.by}:${s.action}`), ['main:Omar Official:unassign', 'main:Omar Official:assign', 'main:Omar Official:start', 'main:Omar Official:checkin', 'main:Asha Admin:reset',
     'practice:Omar Official:unassign', 'practice:Omar Official:assign', 'practice:Omar Official:reset', 'practice:Omar Official:demo', 'main:Asha Admin:remove-team']);

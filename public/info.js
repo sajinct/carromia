@@ -26,7 +26,7 @@ export const about = 'For the first time in the history of Mandya Diocese, a dio
 
 // Bring these to the registration desk on the day.
 export const documents = [
-  'Letter from the Parish Priest (attested)',
+  'Your registration form (download it after registering), signed by both players and attested by the Parish Priest with the parish seal',
   'Any Government ID proof (Aadhaar, driving licence, etc.)',
   'Parish family record book (digital diary or physical)'
 ];
@@ -34,7 +34,8 @@ export const documents = [
 export const goodToKnow = [
   'Reporting time is 9:00 AM.',
   'Water and snacks are provided for participants only.',
-  'Lunch is available to participants who pre-book it in the online registration form.'
+  'Lunch is available to participants who pre-book it in the online registration form.',
+  'The tournament desk may refuse check-in if a player, their ID proof or the attested form does not match the registration.'
 ];
 
 // Rules are numbered 1–16 across the sections, as on the poster.

@@ -1,7 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { emptyState, addTeam, createDraw, assign, start, result, eligible, updateSettings, boardReady, removeTeam, practiceEvent, publicState, walkover, undoWalkover, correctResult, unassign, actions, registrationStatus, parishKey } from '../lib/tournament.mjs';
-const entry = (name, parish = 'Parish') => ({ name, parish, adults: true, players: [{ name: `${name} A`, mobile: '9000000000' }, { name: `${name} B`, mobile: '9000000001' }] });
+import { emptyState, addTeam, createDraw, assign, start, result, eligible, updateSettings, boardReady, removeTeam, practiceEvent, publicState, walkover, undoWalkover, correctResult, unassign, actions, registrationStatus, parishKey, playerPhotos, seedDemo } from '../lib/tournament.mjs';
+import { centres, groups, findCentre } from '../public/parishes.js';
+import { centre, player, photo } from './registration-fixture.mjs';
+// A team from the i-th parish or centre of the diocese register.
+const entry = (name, i = 0) => ({ name, ...centre(i), adults: true, players: [player(`${name} A`, '9000000000', false), player(`${name} B`, '9000000001', false)] });
 // An event without registration limits, so the draw and match tests can use any number of teams on any date.
 function open() { const s = emptyState(); Object.assign(s.event, { maxTeams: 128, maxTeamsPerParish: 128, registrationDeadline: '' }); return s; }
 function setup(n) { const s = open(); for (let i = 1; i <= n; i++) addTeam(s, entry(`Team ${i}`)).checkedIn = true; return s; }
@@ -12,20 +15,48 @@ test('registration requires exactly two valid players, unique team names and the
   assert.throws(() => addTeam(s, { ...entry('New'), adults: false }), /18 or older/); assert.throws(() => addTeam(s, { ...entry('New'), adults: 'yes' }), /18 or older/);
   assert.equal(s.teams.length, 1);
 });
+test('the diocese register: 53 parishes, 19 mass centres and 13 mission centres in 9 foranes and zones', () => {
+  assert.equal(centres.length, 85); assert.equal(groups.length, 9);
+  assert.deepEqual(['Parish', 'Mass Centre', 'Mission Centre'].map(type => centres.filter(c => c.type === type).length), [53, 19, 13]);
+  assert.equal(centres.filter(c => c.group === 'Dharmaram Forane' && c.type === 'Parish').length, 10);
+  // Honnamanakatte is both a mass centre and a mission centre; the type tells them apart.
+  assert.equal(findCentre('Hinkal Forane', 'Honnamanakatte, Jyothi Vikas Centre', 'Mission Centre').type, 'Mission Centre');
+  assert.equal(findCentre('Mandya Zone', 'Koramangala, Mary Matha Church'), null, 'a parish must be in the chosen forane');
+});
+test('registration records the parish or centre from the register and each player’s ID proof, not their photos', () => {
+  const s = open();
+  const t = addTeam(s, { ...entry('Pair'), forane: 'Mathikere Forane', parish: 'Vijayanagar, Mary Matha Church', players: [{ ...player('Anu', '9111111111'), idLast4: 'ab12' }, { ...player('Binu', '9222222222'), idType: 'Voter ID' }] });
+  assert.deepEqual([t.forane, t.parish, t.centreType], ['Mathikere Forane', 'Vijayanagar, Mary Matha Church', 'Parish']);
+  assert.deepEqual(t.players, [{ name: 'Anu', mobile: '9111111111', idType: 'Aadhaar', idLast4: 'AB12' }, { name: 'Binu', mobile: '9222222222', idType: 'Voter ID', idLast4: '1234' }]);
+  assert.throws(() => addTeam(s, { ...entry('No parish'), parish: 'Somewhere Else' }), /Choose your forane or zone/);
+  assert.throws(() => addTeam(s, { ...entry('No forane'), forane: '' }), /Choose your forane or zone/);
+  assert.throws(() => addTeam(s, { ...entry('Bad ID'), players: [player('A'), { ...player('B'), idType: 'Library card' }] }), /ID proof/);
+  assert.throws(() => addTeam(s, { ...entry('Short ID'), players: [player('A'), { ...player('B'), idLast4: '12' }] }), /last 4/);
+  assert.throws(() => addTeam(s, { ...entry('Odd ID'), players: [player('A'), { ...player('B'), idLast4: '12-4' }] }), /last 4/);
+  assert.equal(publicState(s).teams[0].players[0].idLast4, undefined, 'ID details stay private');
+  // Photos are checked apart from the team, and kept out of the event.
+  assert.deepEqual(playerPhotos({ players: [player('A'), player('B')] }), [photo, photo]);
+  assert.throws(() => playerPhotos({ players: [player('A'), player('B', '9', false)] }), /photo of each player/);
+  assert.throws(() => playerPhotos({ players: [player('A'), { ...player('B'), photo: 'data:image/png;base64,AAAA' }] }), /photo of each player/);
+  assert.throws(() => playerPhotos({ players: [player('A'), { ...player('B'), photo: 'data:image/jpeg;base64,' + 'A'.repeat(200000) }] }), /photo of each player/);
+  assert.ok(!JSON.stringify(s).includes('base64'));
+  assert.ok(seedDemo().teams.every(t => findCentre(t.forane, t.parish, t.centreType) && t.players.every(p => p.idType && p.idLast4.length === 4)), 'sample teams use the register too');
+});
 test('registration limits: team slots, teams per parish, deadline and lunch booking', () => {
   const s = emptyState(), before = Date.parse('2026-11-10T18:29:00Z'), after = Date.parse('2026-11-10T18:30:00Z');
   assert.deepEqual([s.event.maxTeams, s.event.maxTeamsPerParish, s.event.registrationDeadline, s.event.entryFee], [64, 4, '2026-11-10', 500]);
-  for (const parish of ['St. Thomas', 'st thomas', 'St Thomas Church', ' ST. THOMAS PARISH ']) addTeam(s, entry(`Thomas ${parish}`, parish), before);
+  // Spellings of one register entry count as the same parish, and are saved as the register has it.
+  for (const parish of ['Dharmaram, St. Thomas Forane Church', 'dharmaram st thomas forane church', 'DHARMARAM, ST. THOMAS FORANE CHURCH.', ' Dharmaram St Thomas Forane Church ']) assert.equal(addTeam(s, { ...entry(`Thomas ${parish}`), forane: 'Dharmaram Forane', parish }, before).parish, 'Dharmaram, St. Thomas Forane Church');
   assert.equal(parishKey('St. Thomas Church'), 'st thomas');
-  assert.throws(() => addTeam(s, entry('Fifth', 'St.Thomas'), before), /St\.Thomas already has 4 teams registered/);
-  assert.equal(addTeam(s, { ...entry('Other', 'Holy Family'), lunch: '2' }, before).lunch, 2);
-  assert.deepEqual([addTeam(s, { ...entry('L1', 'A'), lunch: 9 }, before).lunch, addTeam(s, { ...entry('L2', 'B'), lunch: -1 }, before).lunch, addTeam(s, entry('L3', 'C'), before).lunch], [2, 0, 0]);
+  assert.throws(() => addTeam(s, { ...entry('Fifth'), forane: 'Dharmaram Forane', parish: 'Dharmaram, St. Thomas Forane Church' }, before), /Dharmaram, St\. Thomas Forane Church already has 4 teams registered/);
+  assert.equal(addTeam(s, { ...entry('Other', 2), lunch: '2' }, before).lunch, 2);
+  assert.deepEqual([addTeam(s, { ...entry('L1', 3), lunch: 9 }, before).lunch, addTeam(s, { ...entry('L2', 4), lunch: -1 }, before).lunch, addTeam(s, entry('L3', 5), before).lunch], [2, 0, 0]);
   // The deadline is the end of 10 November in India (18:30 UTC); practice events ignore it.
   assert.deepEqual(registrationStatus(s, before), { open: true, reason: '', slotsLeft: 56, maxTeams: 64 });
-  assert.equal(registrationStatus(s, after).reason, 'Registration closed on 10 November 2026.'); assert.throws(() => addTeam(s, entry('Late', 'D'), after), /closed on 10 November 2026/);
+  assert.equal(registrationStatus(s, after).reason, 'Registration closed on 10 November 2026.'); assert.throws(() => addTeam(s, entry('Late', 6), after), /closed on 10 November 2026/);
   assert.equal(registrationStatus({ ...s, practice: true }, after).open, true);
   s.event.registrationDeadline = ''; assert.equal(registrationStatus(s, after).open, true);
-  s.event.maxTeams = 8; assert.equal(registrationStatus(s, before).reason, 'All 8 team slots are taken. Registration is full.'); assert.throws(() => addTeam(s, entry('Ninth', 'E'), before), /Registration is full/);
+  s.event.maxTeams = 8; assert.equal(registrationStatus(s, before).reason, 'All 8 team slots are taken. Registration is full.'); assert.throws(() => addTeam(s, entry('Ninth', 7), before), /Registration is full/);
   // Events saved before these settings existed use the defaults.
   const old = emptyState(); for (const key of ['maxTeams', 'maxTeamsPerParish', 'registrationDeadline', 'entryFee']) delete old.event[key];
   assert.equal(registrationStatus(old, before).slotsLeft, 64); assert.equal(registrationStatus(old, after).open, false);
@@ -95,8 +126,8 @@ test('officials can end a board reset early; only a resetting, empty board can b
 test('admins can remove teams before the draw; removed IDs are never reused', () => {
   const s = setup(3); removeTeam(s, 'CAR-002');
   assert.deepEqual(s.teams.map(t => t.id), ['CAR-001', 'CAR-003']); assert.match(s.activity[0].message, /Team 2 \(CAR-002\) removed/);
-  const t = addTeam(s, entry('Late Entry', 'P')); assert.equal(t.id, 'CAR-004');
-  removeTeam(s, 'CAR-004'); assert.equal(addTeam(s, entry('Another', 'P')).id, 'CAR-005', 'even the newest ID is not reused');
+  const t = addTeam(s, entry('Late Entry', 8)); assert.equal(t.id, 'CAR-004');
+  removeTeam(s, 'CAR-004'); assert.equal(addTeam(s, entry('Another', 8)).id, 'CAR-005', 'even the newest ID is not reused');
   assert.throws(() => removeTeam(s, 'CAR-999'), /not found/);
   createDraw(s); assert.throws(() => removeTeam(s, 'CAR-001'), /after the draw/);
 });

@@ -11,6 +11,7 @@
     "import:supabase": "node --env-file-if-exists=.env scripts/import-to-supabase.mjs"
   },
   "dependencies": {
+    "jspdf": "^4.2.1",
     "qrcode": "^1.5.4"
   },
   "engines": {

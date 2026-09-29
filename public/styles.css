@@ -229,3 +229,16 @@ a.ph-info-link:hover strong,.ph-info>a:hover strong{text-decoration:underline;te
 
 /* Phones: the public links sit in the menu at the top right. */
 @media(max-width:580px){.public-header{position:relative}.public-header nav{display:none}.public-header .menu-toggle{margin-right:-8px}.public-header .mobile-menu{right:0;top:calc(100% - 8px)}}
+
+/* Registration photos and the desk's player details */
+.photo-field{display:flex;align-items:center;gap:14px}
+.photo-field label{flex:1}
+.photo-preview{width:64px;height:64px;border-radius:50%;object-fit:cover;flex-shrink:0;box-shadow:0 0 0 1px var(--line);margin-bottom:18px}
+.player-cell{display:flex;align-items:center;gap:8px;margin:3px 0}
+.player-cell>span:last-child{display:flex;flex-direction:column}
+.player-photo{width:36px;height:36px;border-radius:50%;object-fit:cover;flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;background:var(--soft);color:var(--green-2);font-size:11px;font-weight:700;box-shadow:0 0 0 1px var(--line)}
+.player-photo.large{width:96px;height:96px;font-size:26px}
+.checkin-players{display:flex;justify-content:center;gap:28px;flex-wrap:wrap;margin:6px 0 14px}
+.checkin-players>div{display:flex;flex-direction:column;align-items:center;gap:6px}
+.checkin-players small{color:var(--muted)}
+.confirmation p small{font-size:12px}

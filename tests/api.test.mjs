@@ -1,9 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { centre, player, photo } from './registration-fixture.mjs';
 
 async function serve(t, port, env = {}) {
   const data = mkdtempSync(join(tmpdir(), 'carromia-test-'));
@@ -17,20 +18,29 @@ async function serve(t, port, env = {}) {
   assert.equal((await post('settings', { durationMinutes: 30, resetMinutes: 5, restMinutes: 0, registrationOpen: true, registrationDeadline: '' }, await login())).status, 200);
   return { base, data, post, login };
 }
-const entry = i => ({ name: `Team ${i}`, parish: `Parish ${i}`, adults: true, players: [{ name: 'Player One', mobile: '9111111111' }, { name: 'Player Two', mobile: '9222222222' }] });
+// A team from the i-th parish or centre of the diocese register, with ID proofs and photos.
+const entry = i => ({ name: `Team ${i}`, ...centre(i), adults: true, players: [player('Player One', '9111111111'), player('Player Two', '9222222222')] });
 
 test('API protects the desk, persists registration, produces QR, and omits private data publicly', async t => {
   const { base, data, post } = await serve(t, 3097);
   assert.equal((await post('draw', {})).status, 401);
-  assert.equal((await post('register', { name: 'Minors', parish: 'Test Parish', players: entry(1).players })).status, 400, 'the 18+ confirmation is required');
-  const reg = await post('register', { name: 'Test Team', parish: 'Test Parish', lunch: 2, adults: true, players: [{ name: 'Player One', mobile: '9111111111' }, { name: 'Player Two', mobile: '9222222222' }] });
+  assert.equal((await post('register', { ...entry(1), name: 'Minors', adults: false })).status, 400, 'the 18+ confirmation is required');
+  assert.equal((await post('register', { ...entry(1), players: [player('A', '9111111111'), player('B', '9222222222', false)] })).status, 400, 'both photos are required');
+  assert.equal((await post('register', { ...entry(1), parish: 'Not In The Register' })).status, 400, 'the parish comes from the register');
+  const reg = await post('register', { ...entry(1), name: 'Test Team', lunch: 2 });
   assert.equal(reg.status, 201); const { team } = await reg.json(); assert.equal(team.id, 'CAR-001');
-  const publicState = await (await fetch(`${base}/api/state`)).json(); assert.equal(publicState.teams[0].players[0].mobile, undefined); assert.equal(publicState.teams[0].checkinToken, undefined);
+  const publicState = await (await fetch(`${base}/api/state`)).json(); assert.equal(publicState.teams[0].players[0].mobile, undefined); assert.equal(publicState.teams[0].players[0].idLast4, undefined); assert.equal(publicState.teams[0].checkinToken, undefined);
+  assert.equal(publicState.teams[0].forane, centre(1).forane);
+  // Photos are kept apart from the event and only the desk can see them.
+  assert.ok(!readFileSync(join(data, 'tournament.json'), 'utf8').includes('base64')); assert.ok(existsSync(join(data, 'photos', 'CAR-001.json')));
+  assert.equal((await fetch(`${base}/api/photos`)).status, 401);
   const qr = await (await fetch(`${base}/api/qr?token=${team.checkinToken}`)).json(); assert.match(qr.qr, /^data:image\/png;base64,/);
   assert.equal(JSON.parse(readFileSync(join(data, 'tournament.json'), 'utf8')).teams.length, 1);
   const login = await post('login', { password: 'test-password' }); assert.equal(login.status, 200); const cookie = login.headers.get('set-cookie').split(';')[0];
   assert.equal((await post('checkin', { token: team.checkinToken }, cookie)).status, 200);
   const adminState = await (await fetch(`${base}/api/state`, { headers: { Cookie: cookie } })).json(); assert.equal(adminState.teams[0].checkedIn, true); assert.equal(adminState.teams[0].players[0].mobile, '9111111111'); assert.equal(adminState.teams[0].lunch, 2);
+  assert.equal(adminState.teams[0].players[0].idType, 'Aadhaar'); assert.equal(adminState.teams[0].checkinToken, team.checkinToken, 'the desk can print a team’s form again');
+  assert.deepEqual(await (await fetch(`${base}/api/photos`, { headers: { Cookie: cookie } })).json(), { 'CAR-001': [photo, photo] });
   assert.deepEqual(adminState.registration, { open: true, reason: '', slotsLeft: 63, maxTeams: 64 }); assert.equal(adminState.event.entryFee, 500);
   assert.equal((await post('change-password', { current: 'test-password', password: 'another-password' }, cookie)).status, 400, 'the shared desk password is not changed from the app');
   assert.equal((await fetch(`${base}/api/backup`)).status, 401);
@@ -38,9 +48,17 @@ test('API protects the desk, persists registration, produces QR, and omits priva
 });
 test('registration is rate limited per connection', async t => {
   const { post } = await serve(t, 3098);
-  assert.equal((await post('register', { ...entry(0), parish: 'parish 1.' })).status, 201);
+  assert.equal((await post('register', entry(0))).status, 201);
   for (let i = 1; i <= 29; i++) assert.equal((await post('register', entry(i))).status, 201);
   assert.equal((await post('register', entry(31))).status, 429);
+});
+test('removing a team or starting a fresh event deletes player photos', async t => {
+  const { base, data, post, login } = await serve(t, 3101); const cookie = await login();
+  for (const i of [1, 2]) assert.equal((await post('register', entry(i))).status, 201);
+  assert.equal((await post('remove-team', { id: 'CAR-001' }, cookie)).status, 200);
+  assert.deepEqual(Object.keys(await (await fetch(`${base}/api/photos`, { headers: { Cookie: cookie } })).json()), ['CAR-002']);
+  assert.equal((await post('reset', { confirm: 'RESET' }, cookie)).status, 200);
+  assert.ok(!existsSync(join(data, 'photos')));
 });
 test('loading the sample tournament keeps event details and timings', async t => {
   const { base, post, login } = await serve(t, 3099); const cookie = await login();

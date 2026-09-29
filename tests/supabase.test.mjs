@@ -3,10 +3,11 @@ import assert from 'node:assert/strict';
 import http from 'node:http';
 import { spawn } from 'node:child_process';
 import { join } from 'node:path';
+import { centre, player, photo } from './registration-fixture.mjs';
 
 // A minimal stand-in for the Supabase REST and Auth endpoints the server uses.
 function mockSupabase() {
-  const db = { row: null, public: null, audit: [], badKeyHeaders: 0 };
+  const db = { row: null, public: null, audit: [], photos: [], badKeyHeaders: 0 };
   const users = { 'asha@example.org': { id: 'u1', password: 'admin-pass' }, 'omar@example.org': { id: 'u2', password: 'official-pass' }, 'guest@example.org': { id: 'u3', password: 'guest-pass' } };
   const officials = { u1: { name: 'Asha Admin', role: 'admin' }, u2: { name: 'Omar Official', role: 'official' } };
   const server = http.createServer(async (req, res) => {
@@ -20,6 +21,8 @@ function mockSupabase() {
       db.row = { version: current + 1, state: body.p_state }; db.public = body.p_public; return reply(200, db.row.version);
     }
     if (url.pathname === '/rest/v1/audit_log' && req.method === 'POST') { db.audit.push(body); return reply(201); }
+    if (url.pathname === '/rest/v1/player_photos' && req.method === 'POST') { db.photos.push(...body); return reply(201); }
+    if (url.pathname === '/rest/v1/player_photos' && req.method === 'GET') return reply(200, db.photos.filter(p => p.event === q('event')));
     if (url.pathname === '/rest/v1/officials') return reply(200, officials[q('user_id')] ? [officials[q('user_id')]] : []);
     if (url.pathname === '/auth/v1/token') { const u = users[body.email]; return u?.password === body.password ? reply(200, { access_token: 'jwt', user: { id: u.id, email: body.email } }) : reply(400, { error_description: 'Invalid login credentials' }); }
     const account = /^\/auth\/v1\/admin\/users\/(.+)$/.exec(url.pathname)?.[1];
@@ -43,14 +46,17 @@ test('Supabase mode: named officials, roles, audit trail, and conflict-safe save
   assert.equal((await state()).authMode, 'supabase');
   // The registration deadline is removed so this test passes on any date.
   assert.equal((await post('settings', { durationMinutes: 30, resetMinutes: 5, restMinutes: 0, registrationOpen: true, registrationDeadline: '' }, await login('asha@example.org', 'admin-pass'))).status, 200);
-  for (let i = 1; i <= 4; i++) assert.equal((await post('register', { name: `Team ${i}`, parish: 'Parish', adults: true, players: [{ name: 'A One', mobile: '9111111111' }, { name: 'B Two', mobile: '9222222222' }] })).status, 201);
-  assert.equal((await post('register', { name: 'Team 5', parish: 'parish', adults: true, players: [{ name: 'A One', mobile: '9111111111' }, { name: 'B Two', mobile: '9222222222' }] })).status, 400, 'at most four teams per parish');
+  const players = [player('A One', '9111111111'), player('B Two', '9222222222')];
+  for (let i = 1; i <= 4; i++) assert.equal((await post('register', { name: `Team ${i}`, ...centre(0), adults: true, players })).status, 201);
+  assert.equal((await post('register', { name: 'Team 5', ...centre(0), adults: true, players })).status, 400, 'at most four teams per parish');
+  assert.equal(db.photos.length, 8); assert.ok(!JSON.stringify(db.row.state).includes('base64'), 'photos are stored apart from the event');
   assert.equal(db.row.version, 5); assert.equal(db.row.state.teams.length, 4);
 
   assert.equal((await post('login', { email: 'asha@example.org', password: 'wrong' })).status, 401);
   assert.equal((await post('login', { email: 'guest@example.org', password: 'guest-pass' })).status, 401, 'non-officials cannot sign in');
   const official = await login('omar@example.org', 'official-pass'), admin = await login('ASHA@example.org ', 'admin-pass');
   assert.deepEqual((await state(official)).user, { name: 'Omar Official', role: 'official' });
+  assert.deepEqual((await (await fetch(`${base}/api/photos`, { headers: { Cookie: official } })).json())['CAR-001'], [photo, photo]);
 
   for (const t of db.row.state.teams) assert.equal((await post('checkin', { id: t.id }, official)).status, 200);
   assert.equal((await post('draw', {}, official)).status, 403, 'officials cannot create the draw');

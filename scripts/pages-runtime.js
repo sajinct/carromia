@@ -4,7 +4,8 @@
 // Practice mode: any device opened with ?practice=1 (or switched from the desk) follows the
 // separate 'practice' event instead, so a TV, phones and the desk can rehearse the full flow
 // without touching the real event. It stays on until "Exit practice".
-import { emptyState, eligible, fail, freshEvent, publicState, practiceEvent, actions, registrationStatus, defaults } from './tournament-browser.js';
+import { emptyState, eligible, fail, freshEvent, publicState, practiceEvent, actions, registrationStatus, defaults, playerPhotos } from './tournament-browser.js';
+import { findCentre } from './parishes.js';
 
 export const pagesMode = true;
 // The publishable key is meant for browsers; the database rules decide what it may do.
@@ -116,7 +117,7 @@ async function changePassword(input) {
 // What the screens render: the followed event, with private details only for officials.
 async function view(user) {
   const { state } = await load(user), practice = eventId() === 'practice';
-  const teams = user ? state.teams.map(({ checkinToken, ...t }) => t) : state.teams;
+  const { teams } = state;
   return { ...state, event: { ...defaults, ...state.event }, practice, practiceAvailable: Boolean(user) || practice, practiceLinks: practice ? { live: practiceLink('/live'), register: practiceLink('/register'), desk: practiceLink('/admin') } : null, teams, activity: user ? state.activity : [], matches: state.matches.map(m => ({ ...m, blockedReason: eligible(state, m, now()) })), registration: registrationStatus({ ...state, practice }, now()), isAdmin: Boolean(user), user: user && { name: user.name, role: user.role }, authMode: 'supabase', localDemo: false, serverTime: now() };
 }
 
@@ -140,21 +141,25 @@ export async function remoteApi(path, input = {}) {
   if (path === 'logout') { const token = readSession()?.access_token; writeSession(null); if (token) request('/auth/v1/logout', { method: 'POST', token }).catch(() => {}); return { ok: true }; }
   if (path === 'register') {
     const players = Array.isArray(input.players) ? input.players : [];
+    // The database checks the rest; the forane / parish pair is checked against the register here.
+    const centre = findCentre(input.forane, input.parish, input.centreType);
+    fail(!centre, 'Choose your forane or zone, then your parish or centre from the list.');
     fail(input.adults !== true, 'Confirm that both players are 18 or older.');
-    const body = { p_name: input.name, p_parish: input.parish, p_players: players, p_primary: Number(input.primaryContact) === 1 ? 1 : 0, p_event: eventId() };
-    try { return await request('/rest/v1/rpc/register_team', { method: 'POST', body: { ...body, p_lunch: Number(input.lunch) || 0, p_adults: true } }); }
-    catch (error) {
-      // Until 20261002000000_carromia_rules.sql is run, the database only knows the earlier
-      // registration (no lunch booking, slot or parish limits); registering still works.
-      if (error.status !== 404) throw error;
-      return request('/rest/v1/rpc/register_team', { method: 'POST', body });
-    }
+    playerPhotos(input);
+    const body = { p_name: input.name, p_forane: centre.group, p_parish: centre.name, p_centre_type: centre.type, p_players: players, p_primary: Number(input.primaryContact) === 1 ? 1 : 0, p_event: eventId(), p_lunch: Number(input.lunch) || 0, p_adults: true };
+    try { return await request('/rest/v1/rpc/register_team', { method: 'POST', body }); }
+    catch (error) { throw error.status === 404 ? new Error('Registration is being updated. Please try again shortly.') : error; }
   }
 
   const user = await official();
   if (path === 'state') return view(user);
   if (officialActions[path]) return manageOfficials(user, officialActions[path], input);
   fail(!user, 'Sign in to the tournament desk first.');
+  // Player photos, for officials: { [team id]: [photo 1, photo 2] }.
+  if (path === 'photos') {
+    const rows = await request(`/rest/v1/player_photos?event=eq.${eventId()}&select=team_id,player,image`, { token: user.token });
+    const map = {}; for (const r of rows) { map[r.team_id] ??= []; map[r.team_id][r.player] = r.image; } return map;
+  }
   if (path === 'backup') { fail(user.role !== 'admin', 'Only an event admin can download backups.'); return (await load(user)).state; }
   const action = handlers[path];
   fail(!action, 'This action is not available.');

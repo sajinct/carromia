@@ -4,7 +4,7 @@ import { join, extname } from 'node:path';
 import { randomBytes, timingSafeEqual } from 'node:crypto';
 import QRCode from 'qrcode';
 import { fileStore, supabaseStore, ConflictError } from './lib/store.mjs';
-import { emptyState, addTeam, eligible, fail, actions, registrationStatus, defaults } from './lib/tournament.mjs';
+import { emptyState, addTeam, playerPhotos, eligible, fail, actions, registrationStatus, defaults } from './lib/tournament.mjs';
 
 const port = Number(process.env.PORT || 3000);
 const host = process.env.HOST || '127.0.0.1';
@@ -39,10 +39,10 @@ function signIn(res, user) {
 }
 const auditDetail = ({ token, confirm, password, ...input }) => input;
 function send(res, status, value) { res.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }); res.end(JSON.stringify(value)); }
-async function body(req) { let text = ''; for await (const chunk of req) { text += chunk; if (text.length > 20000) throw new Error('Request too large.'); } return JSON.parse(text || '{}'); }
+async function body(req, limit = 20000) { let text = ''; for await (const chunk of req) { text += chunk; if (text.length > limit) throw new Error('Request too large.'); } return JSON.parse(text || '{}'); }
 function view(user) {
   const isAdmin = Boolean(user);
-  return { ...state, event: { ...defaults, ...state.event }, teams: state.teams.map(({ checkinToken, ...t }) => ({ ...t, players: t.players.map(p => isAdmin ? p : { name: p.name }) })), activity: isAdmin ? state.activity : [], matches: state.matches.map(m => ({ ...m, blockedReason: eligible(state, m) })), registration: registrationStatus(state), isAdmin, user: user && { name: user.name, role: user.role }, authMode: supabase ? 'supabase' : 'password', localDemo: !supabase && !process.env.ADMIN_PASSWORD, serverTime: Date.now() };
+  return { ...state, event: { ...defaults, ...state.event }, teams: state.teams.map(({ checkinToken, ...t }) => isAdmin ? { ...t, checkinToken } : { ...t, players: t.players.map(p => ({ name: p.name })) }), activity: isAdmin ? state.activity : [], matches: state.matches.map(m => ({ ...m, blockedReason: eligible(state, m) })), registration: registrationStatus(state), isAdmin, user: user && { name: user.name, role: user.role }, authMode: supabase ? 'supabase' : 'password', localDemo: !supabase && !process.env.ADMIN_PASSWORD, serverTime: Date.now() };
 }
 const types = { '.html': 'text/html', '.css': 'text/css', '.js': 'text/javascript', '.svg': 'image/svg+xml', '.webmanifest': 'application/manifest+json', '.png': 'image/png', '.webp': 'image/webp' };
 const server = http.createServer(async (req, res) => {
@@ -57,13 +57,15 @@ const server = http.createServer(async (req, res) => {
     }
     if (url.pathname === '/api/state' && req.method === 'GET') return send(res, 200, view(official(req)));
     if (url.pathname === '/api/backup' && req.method === 'GET') { const user = official(req); if (!user) return send(res, 401, { error: 'Sign in to download a backup.' }); if (user.role !== 'admin') return send(res, 403, { error: 'Only an event admin can download backups.' }); return send(res, 200, state); }
+    if (url.pathname === '/api/photos' && req.method === 'GET') { if (!official(req)) return send(res, 401, { error: 'Sign in to the tournament desk first.' }); return send(res, 200, await store.loadPhotos()); }
     if (url.pathname === '/api/qr' && req.method === 'GET') {
       const t = state.teams.find(t => t.checkinToken === url.searchParams.get('token')); if (!t) return send(res, 404, { error: 'Team not found.' });
       const qr = await QRCode.toDataURL(`${process.env.PUBLIC_URL || `http://localhost:${port}`}/checkin?token=${t.checkinToken}`, { width: 240, margin: 2, color: { dark: '#172d2c', light: '#ffffff' } }); return send(res, 200, { qr });
     }
     if (url.pathname.startsWith('/api/') && req.method === 'POST') {
       if (req.headers.origin && req.headers.origin !== `http://${req.headers.host}` && req.headers.origin !== process.env.PUBLIC_URL) return send(res, 403, { error: 'Origin not allowed.' });
-      const input = await body(req);
+      // Registration carries two small player photos; every other request is small.
+      const input = await body(req, url.pathname === '/api/register' ? 300000 : 20000);
       if (url.pathname === '/api/login') {
         const key = `login:${req.socket.remoteAddress}`;
         if (limited(key, 10, 60000)) return send(res, 429, { error: 'Too many attempts. Try again in a minute.' });
@@ -79,7 +81,7 @@ const server = http.createServer(async (req, res) => {
         attempts.delete(key); signIn(res, user); store.audit({ actor_id: user.id, actor_name: user.name, action: 'login' }); return send(res, 200, { ok: true });
       }
       if (url.pathname === '/api/logout') { const token = /carromia_session=([^;]+)/.exec(req.headers.cookie || '')?.[1]; sessions.delete(token); res.setHeader('Set-Cookie', 'carromia_session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0'); return send(res, 200, { ok: true }); }
-      if (url.pathname === '/api/register') { if (limited(`register:${req.socket.remoteAddress}`, 30, 600000)) return send(res, 429, { error: 'Too many registrations from this connection. Try again in a few minutes.' }); const team = await change(() => { fail(state.demo, 'Sample tournament is active. Start a fresh event from Settings to accept registrations.'); return addTeam(state, input); }); store.audit({ actor_name: 'Public registration', action: 'register', detail: { team: team.id, name: team.name } }); return send(res, 201, { team }); }
+      if (url.pathname === '/api/register') { if (limited(`register:${req.socket.remoteAddress}`, 30, 600000)) return send(res, 429, { error: 'Too many registrations from this connection. Try again in a few minutes.' }); const photos = playerPhotos(input); const team = await change(() => { fail(state.demo, 'Sample tournament is active. Start a fresh event from Settings to accept registrations.'); return addTeam(state, input); }); await store.savePhotos(team.id, photos); store.audit({ actor_name: 'Public registration', action: 'register', detail: { team: team.id, name: team.name } }); return send(res, 201, { team }); }
       const user = official(req);
       if (!user) return send(res, 401, { error: 'Sign in to the tournament desk first.' });
       if (url.pathname === '/api/change-password') {
@@ -97,6 +99,9 @@ const server = http.createServer(async (req, res) => {
       if (!action) return send(res, 404, { error: 'Endpoint not found.' });
       if (action.admin && user.role !== 'admin') return send(res, 403, { error: 'Only an event admin can do this.' });
       await change(() => { const next = action.run(state, input, { now: Date.now(), official: user.name }); if (next) state = next; });
+      // Photos go with their team: a removed team's, or every one when a fresh event starts.
+      if (url.pathname === '/api/remove-team') await store.deletePhotos(String(input.id));
+      if (url.pathname === '/api/reset') await store.deletePhotos();
       store.audit({ actor_id: user.id, actor_name: user.name, action: url.pathname.slice(5), detail: auditDetail(input) });
       return send(res, 200, { ok: true });
     }
