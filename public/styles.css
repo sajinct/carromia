@@ -106,3 +106,6 @@ a.ph-info-link:hover strong,.ph-info>a:hover strong{text-decoration:underline;te
 .practice-link small{color:var(--muted);font-size:11px;margin:2px 0 6px}
 .practice-link code{display:block;font-size:10px;word-break:break-all;color:#5c6a58;margin-bottom:8px}
 .practice-actions{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px}
+.live-foot-links{display:flex;align-items:center;gap:18px;flex-wrap:wrap}
+.practice-switch{font-size:inherit;color:#a0741b;text-decoration:underline;text-underline-offset:3px;padding:0}
+.practice-switch:hover{color:#6d4c07}
