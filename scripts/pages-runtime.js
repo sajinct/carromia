@@ -1,9 +1,9 @@
-// GitHub Pages runtime: the static site talks to Supabase directly (see
-// supabase/migrations/20260929010000_carromia_live.sql). Visitors read the public copy of the
-// event; signed-in officials apply the tournament rules in the browser and save through
-// save_tournament(), which rejects stale saves so no change is ever lost.
-// Practice mode: an official can switch this browser to the separate 'practice' event (sample
-// teams, never public) to try the desk without touching the real event.
+// GitHub Pages runtime: the static site talks to Supabase directly (see supabase/migrations).
+// Visitors read the public copy of the event; signed-in officials apply the tournament rules in
+// the browser and save through save_tournament(), which rejects stale saves so no change is lost.
+// Practice mode: any device opened with ?practice=1 (or switched from the desk) follows the
+// separate 'practice' event instead, so a TV, phones and the desk can rehearse the full flow
+// without touching the real event. It stays on until "Exit practice".
 import { emptyState, createDraw, assign, start, result, eligible, fail, updateSettings, checkIn, unassign, freshEvent, publicState, log, boardReady, removeTeam, practiceEvent } from './tournament-browser.js';
 
 export const pagesMode = true;
@@ -19,6 +19,10 @@ const readSession = () => { try { return JSON.parse(localStorage.getItem(SESSION
 const practiceOn = () => { try { return localStorage.getItem(PRACTICE_KEY) === 'on'; } catch { return false; } };
 const setPractice = on => { try { on ? localStorage.setItem(PRACTICE_KEY, 'on') : localStorage.removeItem(PRACTICE_KEY); } catch {} };
 const writeSession = value => { try { value ? localStorage.setItem(SESSION_KEY, JSON.stringify(value)) : localStorage.removeItem(SESSION_KEY); } catch {} };
+// A practice link (?practice=1) switches this device into practice mode; ?practice=0 leaves it.
+if (typeof location !== 'undefined') { const flag = new URLSearchParams(location.search).get('practice'); if (flag !== null) setPractice(flag === '1'); }
+const siteUrl = () => `${location.origin}${location.pathname}`;
+const practiceLink = route => `${siteUrl()}?practice=1#${route}`;
 
 async function request(path, { method = 'GET', body, token } = {}) {
   const headers = { apikey: PUBLISHABLE_KEY, 'Content-Type': 'application/json' };
@@ -49,15 +53,14 @@ async function syncClock() {
   offset = server - (sent + Date.now()) / 2; clockSynced = true;
 }
 
-// Which event this browser works on: practice only for a signed-in official who switched it on.
-const eventId = user => user && practiceOn() ? 'practice' : 'main';
+const eventId = () => practiceOn() ? 'practice' : 'main';
 async function load(user) {
-  const id = eventId(user);
-  const [row] = await request(user ? `/rest/v1/tournament?id=eq.${id}&select=version,state` : '/rest/v1/tournament_public?id=eq.main&select=version,state', { token: user?.token });
+  const id = eventId();
+  const [row] = await request(user ? `/rest/v1/tournament?id=eq.${id}&select=version,state` : `/rest/v1/tournament_public?id=eq.${id}&select=version,state`, { token: user?.token });
   if (row) return { id, version: row.version, state: row.state };
-  // The practice event is created from the sample tournament on first use.
-  if (id === 'practice') return { id, version: 0, state: practiceEvent((await request('/rest/v1/tournament?id=eq.main&select=state', { token: user.token }))[0]?.state?.event ?? emptyState().event) };
-  return { id, version: 0, state: emptyState() };
+  // The practice event is created from the sample tournament on an official's first use.
+  if (id === 'practice' && user) return { id, version: 0, state: practiceEvent((await request('/rest/v1/tournament?id=eq.main&select=state', { token: user.token }))[0]?.state?.event ?? emptyState().event) };
+  return { id, version: 0, state: { ...emptyState(), practice: id === 'practice' } };
 }
 
 // Applies a desk action to the latest saved event and saves it; retries if someone saved first.
@@ -71,9 +74,8 @@ async function change(user, action, input, apply) {
   }
 }
 
-async function qrCode(token) {
+async function qrCode(url) {
   const { default: QRCode } = await import('https://cdn.jsdelivr.net/npm/qrcode@1.5.4/+esm');
-  const url = `${location.origin}${location.pathname}#/checkin?token=${encodeURIComponent(token)}`;
   return { qr: await QRCode.toDataURL(url, { width: 240, margin: 2, color: { dark: '#172d2c', light: '#ffffff' } }) };
 }
 
@@ -88,24 +90,29 @@ async function signIn(input) {
   return { ok: true };
 }
 
+// What the screens render: the followed event, with private details only for officials.
+async function view(user) {
+  const { state } = await load(user), practice = eventId() === 'practice';
+  const teams = user ? state.teams.map(({ checkinToken, ...t }) => t) : state.teams;
+  return { ...state, practice, practiceAvailable: Boolean(user) || practice, practiceLinks: practice ? { live: practiceLink('/live'), register: practiceLink('/register'), desk: practiceLink('/admin') } : null, teams, activity: user ? state.activity : [], matches: state.matches.map(m => ({ ...m, blockedReason: eligible(state, m, now()) })), isAdmin: Boolean(user), user: user && { name: user.name, role: user.role }, authMode: 'supabase', localDemo: false, serverTime: now() };
+}
+
 export async function remoteApi(path, input = {}) {
-  if (path.startsWith('qr?')) return qrCode(new URLSearchParams(path.slice(3)).get('token'));
+  // Check-in QR codes keep the device in the same event (a practice QR opens practice mode).
+  if (path.startsWith('qr?')) { const token = encodeURIComponent(new URLSearchParams(path.slice(3)).get('token')); return qrCode(practiceOn() ? practiceLink(`/checkin?token=${token}`) : `${siteUrl()}#/checkin?token=${token}`); }
+  if (path.startsWith('practice-qr?')) return qrCode(practiceLink(new URLSearchParams(path.slice(12)).get('route')));
+  if (path === 'practice') { setPractice(input.on === true); return { ok: true }; }
   await syncClock();
   if (path === 'login') return signIn(input);
-  if (path === 'logout') { const token = readSession()?.access_token; writeSession(null); setPractice(false); if (token) request('/auth/v1/logout', { method: 'POST', token }).catch(() => {}); return { ok: true }; }
+  if (path === 'logout') { const token = readSession()?.access_token; writeSession(null); if (token) request('/auth/v1/logout', { method: 'POST', token }).catch(() => {}); return { ok: true }; }
   if (path === 'register') {
     const players = Array.isArray(input.players) ? input.players : [];
-    return request('/rest/v1/rpc/register_team', { method: 'POST', body: { p_name: input.name, p_parish: input.parish, p_players: players, p_primary: Number(input.primaryContact) === 1 ? 1 : 0 } });
+    return request('/rest/v1/rpc/register_team', { method: 'POST', body: { p_name: input.name, p_parish: input.parish, p_players: players, p_primary: Number(input.primaryContact) === 1 ? 1 : 0, p_event: eventId() } });
   }
 
   const user = await official();
-  if (path === 'state') {
-    const { state } = await load(user);
-    const teams = user ? state.teams.map(({ checkinToken, ...t }) => t) : state.teams;
-    return { ...state, practice: eventId(user) === 'practice', practiceAvailable: Boolean(user), teams, activity: user ? state.activity : [], matches: state.matches.map(m => ({ ...m, blockedReason: eligible(state, m, now()) })), isAdmin: Boolean(user), user: user && { name: user.name, role: user.role }, authMode: 'supabase', localDemo: false, serverTime: now() };
-  }
+  if (path === 'state') return view(user);
   fail(!user, 'Sign in to the tournament desk first.');
-  if (path === 'practice') { setPractice(input.on === true); return { ok: true }; }
   // In practice mode every official may try every action; the real event keeps admin-only actions.
   fail(adminOnly.has(path) && user.role !== 'admin' && !(practiceOn() && path !== 'backup'), 'Only an event admin can do this.');
   if (path === 'backup') return (await load(user)).state;
@@ -120,22 +127,22 @@ export async function remoteApi(path, input = {}) {
     settings: state => { updateSettings(state, input); log(state, 'Event settings updated'); },
     'remove-team': state => removeTeam(state, input.id),
     demo: (state, id) => { fail(id !== 'practice', 'Sample teams live in practice mode, so they never mix with real registrations.'); return practiceEvent(state.event); },
-    reset: (state, id) => id === 'practice' ? (fail(input.confirm !== 'RESET', 'Type RESET to reset the practice event.'), practiceEvent(state.event)) : freshEvent(state, input.confirm)
+    // Resetting practice gives an empty practice event with registration open, ready for a full rehearsal.
+    reset: (state, id) => id === 'practice' ? { ...freshEvent(state, input.confirm), practice: true } : freshEvent(state, input.confirm)
   };
   fail(!actions[path], 'This action is not available.');
   await change(user, path, input, actions[path]);
   return { ok: true };
 }
 
-// Calls onChange whenever the saved event changes (a cheap version check every few seconds).
+// Calls onChange whenever the followed event changes (a cheap version check every few seconds).
 export function watch(onChange) {
   let known = null;
   const check = async () => {
     if (document.hidden) return;
     try {
-      const user = practiceOn() ? await official() : null;
-      const [row] = await request(user ? '/rest/v1/tournament?id=eq.practice&select=version' : '/rest/v1/tournament_public?id=eq.main&select=version', { token: user?.token });
-      const version = `${user ? 'practice' : 'main'}:${row?.version ?? 0}`; if (known !== null && version !== known) onChange(); known = version;
+      const id = eventId(), [row] = await request(`/rest/v1/tournament_public?id=eq.${id}&select=version`);
+      const version = `${id}:${row?.version ?? 0}`; if (known !== null && version !== known) onChange(); known = version;
     } catch {}
   };
   check(); setInterval(check, 4000);

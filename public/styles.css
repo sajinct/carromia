@@ -97,3 +97,12 @@ a.ph-info-link:hover strong,.ph-info>a:hover strong{text-decoration:underline;te
 .practice-banner strong{letter-spacing:1.5px;font-size:11px}
 .practice-banner .btn{background:#6d4c07;color:#fff}
 .dialog-actions{display:flex;gap:10px;justify-content:flex-end;margin-top:18px;flex-wrap:wrap}
+
+.practice-panel{border-color:#f0d58a}
+.practice-links{display:grid;gap:12px;margin:14px 0}
+.practice-link{display:flex;gap:14px;align-items:flex-start;padding:12px;border:1px solid var(--line);border-radius:10px;background:#fffdf5}
+.practice-link img{width:96px;height:96px;flex-shrink:0;border-radius:6px;background:#fff}
+.practice-link strong{display:block;font-size:13px}
+.practice-link small{color:var(--muted);font-size:11px;margin:2px 0 6px}
+.practice-link code{display:block;font-size:10px;word-break:break-all;color:#5c6a58;margin-bottom:8px}
+.practice-actions{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px}
