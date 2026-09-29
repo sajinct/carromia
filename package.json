@@ -1,0 +1,9 @@
+{
+  "name": "carromia",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": { "start": "node server.mjs", "test": "node --test tests/*.test.mjs", "build:pages": "node scripts/build-pages.mjs" },
+  "dependencies": { "qrcode": "^1.5.4" },
+  "engines": { "node": ">=22" }
+}
