@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { emptyState, addTeam, createDraw, assign, start, result, eligible, updateSettings } from '../lib/tournament.mjs';
+import { emptyState, addTeam, createDraw, assign, start, result, eligible, updateSettings, boardReady } from '../lib/tournament.mjs';
 function setup(n) { const s = emptyState(); for (let i = 1; i <= n; i++) { const t = addTeam(s, { name: `Team ${i}`, parish: 'Parish', players: [{ name: `P${i} A`, mobile: '9000000000' }, { name: `P${i} B`, mobile: '9000000001' }] }); t.checkedIn = true; } return s; }
 test('registration requires exactly two valid players and unique team names', () => { const s = setup(1); assert.throws(() => addTeam(s, { name: 'New', parish: 'Parish', players: [] }), /exactly two/); assert.throws(() => addTeam(s, { ...s.teams[0] }), /already registered/); assert.equal(s.teams.length, 1); });
 test('draw handles every team count from 2 to 128 with one champion and n-1 actual matches', () => {
@@ -31,4 +31,14 @@ test('event defaults to the poster date and time; start time is validated', () =
   for (const startTime of ['9am', '24:00', '09:60']) assert.throws(() => updateSettings(emptyState(), { ...base, startTime }), /start time/);
   updateSettings(s, { ...base, startTime: '14:30', registrationOpen: true }); assert.equal(s.event.startTime, '14:30'); assert.equal(s.event.registrationOpen, true);
   updateSettings(s, { ...base, startTime: '' }); assert.equal(s.event.startTime, '');
+});
+test('officials can end a board reset early; only a resetting, empty board can be marked ready', () => {
+  const s = setup(4); createDraw(s, false); assign(s, 'M01', 1, 0); start(s, 'M01', 0);
+  assert.throws(() => boardReady(s, 1, 60000), /match in progress/);
+  result(s, 'M01', { a: 1, b: 4 }, 600000); assert.equal(s.boards[0].availableAt, 900000);
+  assert.throws(() => assign(s, 'M02', 1, 620000), /being reset/);
+  boardReady(s, 1, 620000); assert.equal(s.boards[0].availableAt, 620000); assert.match(s.activity[0].message, /Board 1 reset early/);
+  assign(s, 'M02', 1, 620000); assert.equal(s.matches[1].board, 1);
+  assert.throws(() => boardReady(s, 2, 620000), /already available/); assert.throws(() => boardReady(s, 9, 620000), /not found/);
+  assert.equal(s.matches[0].board, 1, 'the finished match keeps its board so the winner can be shown there');
 });

@@ -2,7 +2,7 @@
 // supabase/migrations/20260929010000_carromia_live.sql). Visitors read the public copy of the
 // event; signed-in officials apply the tournament rules in the browser and save through
 // save_tournament(), which rejects stale saves so no change is ever lost.
-import { emptyState, createDraw, assign, start, result, eligible, fail, updateSettings, checkIn, unassign, freshEvent, loadSample, publicState, log } from './tournament-browser.js';
+import { emptyState, createDraw, assign, start, result, eligible, fail, updateSettings, checkIn, unassign, freshEvent, loadSample, publicState, log, boardReady } from './tournament-browser.js';
 
 export const pagesMode = true;
 // The publishable key is meant for browsers; the database rules decide what it may do.
@@ -104,6 +104,7 @@ export async function remoteApi(path, input = {}) {
     start: state => start(state, input.id, now()),
     result: state => { result(state, input.id, input, now()); const m = state.matches.find(m => m.id === input.id); if (m.status === 'completed') m.official = user.name; },
     unassign: state => unassign(state, input.id),
+    'board-ready': state => boardReady(state, input.board, now()),
     settings: state => { updateSettings(state, input); log(state, 'Event settings updated'); },
     demo: state => loadSample(state),
     reset: state => freshEvent(state, input.confirm)

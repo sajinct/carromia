@@ -4,7 +4,7 @@ import { join, extname } from 'node:path';
 import { randomBytes, timingSafeEqual } from 'node:crypto';
 import QRCode from 'qrcode';
 import { fileStore, supabaseStore, ConflictError } from './lib/store.mjs';
-import { emptyState, addTeam, createDraw, assign, start, result, eligible, log, fail, updateSettings, checkIn, unassign, freshEvent, loadSample } from './lib/tournament.mjs';
+import { emptyState, addTeam, createDraw, assign, start, result, eligible, log, fail, updateSettings, checkIn, unassign, freshEvent, loadSample, boardReady } from './lib/tournament.mjs';
 
 const port = Number(process.env.PORT || 3000);
 const host = process.env.HOST || '127.0.0.1';
@@ -92,6 +92,7 @@ const server = http.createServer(async (req, res) => {
           case '/api/start': start(state, input.id); break;
           case '/api/result': { result(state, input.id, input); const m = state.matches.find(m => m.id === input.id); if (m.status === 'completed') m.official = user.name; break; }
           case '/api/unassign': unassign(state, input.id); break;
+          case '/api/board-ready': boardReady(state, input.board); break;
           case '/api/settings': updateSettings(state, input); log(state, 'Event settings updated'); break;
           case '/api/demo': state = loadSample(state); break;
           case '/api/reset': state = freshEvent(state, input.confirm); break;

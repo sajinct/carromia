@@ -74,3 +74,22 @@ a.ph-info-link:hover strong,.ph-info>a:hover strong{text-decoration:underline;te
 @media(max-width:1100px){.poster-hero{padding:44px 40px 0}.ph-info>*{padding:0 16px}.ph-info strong{font-size:15px}}
 @media(max-width:850px){.poster-hero{grid-template-columns:1fr;padding:38px 28px 0;margin-top:22px}.ph-poster{max-width:300px;align-self:center}.ph-info{grid-template-columns:1fr;gap:18px;margin-top:10px}.ph-info>*{padding:0}.ph-info>*+*{border-left:0}.skill-strip{gap:10px;letter-spacing:2.5px;font-size:10px}}
 @media(max-width:580px){.poster-hero{padding:30px 20px 0;border-radius:20px}.ph-title{font-size:54px}.ph-brush{font-size:13px;padding:7px 16px 6px}.ph-presents small{letter-spacing:5px;margin-left:18px}.ph-tag{font-size:13px;letter-spacing:1.8px}.ph-welcome{font-size:11px;letter-spacing:3px}.ph-welcome:before,.ph-welcome:after{width:32px}}
+
+.empty-board.resetting{justify-content:space-between;gap:14px;background:radial-gradient(ellipse at top,#fff8e1,#fff 70%)}
+.board-winner{display:flex;flex-direction:column;align-items:center;gap:6px;width:100%}
+.winner-eyebrow{display:inline-flex;align-items:center;gap:6px;font-size:9px;font-weight:700;letter-spacing:1.4px;color:#a0741b;text-transform:uppercase}
+.winner-eyebrow .icon{width:15px;height:15px;color:#d49a12}
+.winner-name{font-size:19px;letter-spacing:-.4px;color:#1d2b25;line-height:1.25;margin-top:4px}
+.winner-players{font-size:11px;color:#7d8676}
+.winner-score{display:flex;align-items:center;gap:10px;margin:8px 0 2px;font-variant-numeric:tabular-nums}
+.winner-score b{font-size:30px;font-weight:650;color:#193e35}
+.winner-score b:last-child{color:#b7bca9}
+.winner-score span{color:#c9cdbd}
+.winner-how{font-size:10px;color:#8b927f;max-width:230px}
+.reset-line{display:flex;align-items:baseline;justify-content:center;gap:8px;font-size:10px;letter-spacing:.3px;color:#9aa08c;border-top:1px dashed #ece6cf;padding-top:12px;width:100%}
+.reset-line .reset-timer{margin:0;font-size:18px}
+.live-boards .winner-name{font-size:24px}
+.live-boards .winner-players{font-size:13px}
+.live-boards .winner-score b{font-size:40px}
+.live-boards .winner-how{font-size:12px}
+.live-boards .winner-eyebrow{font-size:11px}
