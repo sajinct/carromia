@@ -41,8 +41,11 @@ test('Supabase mode: named officials, roles, audit trail, and conflict-safe save
   const login = async (email, password) => { const res = await post('login', { email, password }); assert.equal(res.status, 200, `${email} should sign in`); return res.headers.get('set-cookie').split(';')[0]; };
 
   assert.equal((await state()).authMode, 'supabase');
-  for (let i = 1; i <= 4; i++) assert.equal((await post('register', { name: `Team ${i}`, parish: 'Parish', players: [{ name: 'A One', mobile: '9111111111' }, { name: 'B Two', mobile: '9222222222' }] })).status, 201);
-  assert.equal(db.row.version, 4); assert.equal(db.row.state.teams.length, 4);
+  // The registration deadline is removed so this test passes on any date.
+  assert.equal((await post('settings', { durationMinutes: 30, resetMinutes: 5, restMinutes: 0, registrationOpen: true, registrationDeadline: '' }, await login('asha@example.org', 'admin-pass'))).status, 200);
+  for (let i = 1; i <= 4; i++) assert.equal((await post('register', { name: `Team ${i}`, parish: 'Parish', adults: true, players: [{ name: 'A One', mobile: '9111111111' }, { name: 'B Two', mobile: '9222222222' }] })).status, 201);
+  assert.equal((await post('register', { name: 'Team 5', parish: 'parish', adults: true, players: [{ name: 'A One', mobile: '9111111111' }, { name: 'B Two', mobile: '9222222222' }] })).status, 400, 'at most four teams per parish');
+  assert.equal(db.row.version, 5); assert.equal(db.row.state.teams.length, 4);
 
   assert.equal((await post('login', { email: 'asha@example.org', password: 'wrong' })).status, 401);
   assert.equal((await post('login', { email: 'guest@example.org', password: 'guest-pass' })).status, 401, 'non-officials cannot sign in');

@@ -162,3 +162,67 @@ a.ph-info-link:hover strong,.ph-info>a:hover strong{text-decoration:underline;te
 .tie-fields{margin:12px 0 4px;border:1px solid var(--line);border-radius:8px;padding:8px 12px}
 .tie-fields summary{cursor:pointer;font-size:12px;font-weight:600;color:var(--green)}
 .tie-fields label{margin-top:8px}
+
+/* Event details, prizes, day plan and rules (from the tournament poster). */
+.essentials{padding:56px 0;border-bottom:1px solid var(--line)}
+.essentials-head{display:flex;justify-content:space-between;align-items:flex-end;gap:20px;margin-bottom:28px}
+.essentials-head h2,.day-plan h2{font-size:27px;line-height:1.4;margin-top:12px;letter-spacing:-1px}
+.info-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px}
+.info-grid>div{background:var(--paper);border:1px solid var(--line);border-radius:var(--radius);padding:20px}
+.info-grid span,.prize span{display:block;font-size:9px;letter-spacing:1.2px;color:#89947d;font-weight:600}
+.info-grid strong{display:block;font-size:24px;letter-spacing:-.8px;color:var(--green);margin-top:12px}
+.info-grid p{font-size:12px;color:#808977;margin-top:6px;line-height:1.6}
+.prize-row{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:14px}
+.prize{display:grid;grid-template-columns:auto 1fr;gap:4px 16px;align-items:center;padding:20px;border-radius:var(--radius);background:var(--green);color:#fff}
+.prize .icon{grid-row:span 3;width:34px;height:34px;color:var(--lime)}
+.prize span{color:#c5d6b0}
+.prize strong{font-size:26px;letter-spacing:-.8px}
+.prize small{font-size:11px;color:#c5d6b0}
+.prize-2{background:#2d6552}
+.prize-3{background:#4d7a5f}
+.day-plan{display:grid;grid-template-columns:1fr 1.2fr;gap:70px;padding:56px 0;border-bottom:1px solid var(--line);align-items:start}
+.timeline{list-style:none;margin:24px 0 0;padding:0}
+.timeline li{display:flex;gap:20px;align-items:baseline;padding:13px 0;border-bottom:1px solid var(--line);font-size:14px}
+.timeline time{width:82px;flex-shrink:0;font-size:12px;font-weight:600;color:#76816b;font-variant-numeric:tabular-nums}
+.day-notes{display:grid;gap:14px}
+.day-note{display:flex;gap:16px;padding:18px 20px;background:var(--paper);border:1px solid var(--line);border-radius:var(--radius)}
+.day-note>.icon{width:20px;height:20px;flex-shrink:0;color:#7c9a68;margin-top:1px}
+.day-note strong{font-size:14px;letter-spacing:-.2px}
+.day-note p,.day-note li{font-size:12px;color:#808977;line-height:1.7}
+.day-note p{margin-top:5px}
+.day-note ul,.day-note ol{margin:6px 0 0;padding-left:18px}
+.day-note .text-link{font-size:12px;margin-top:8px}
+.day-note .text-link .icon{width:13px;height:13px}
+.rules-page{padding:56px 0 70px}
+.rules-head{max-width:640px;margin-bottom:36px}
+.rules-head h1{font-size:43px;line-height:1.2;margin:20px 0;color:var(--green)}
+.rules-head p{color:#808977;font-size:14px;line-height:1.7}
+.rules-grid,.rules-extra{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.rules-extra{margin-top:16px}
+.rule-card{background:var(--paper);border:1px solid var(--line);border-radius:var(--radius);padding:24px}
+.rule-card header{display:flex;align-items:center;gap:14px;margin-bottom:14px}
+.rule-card header span{display:grid;place-items:center;width:36px;height:36px;flex-shrink:0;border-radius:9px;background:var(--soft);color:var(--green-2);font-size:12px;font-weight:700}
+.rule-card header .icon{width:22px;height:22px;flex-shrink:0;color:#7c9a68}
+.rule-card h2{font-size:16px;letter-spacing:-.3px}
+.rule-card ol,.rule-card ul{margin:0;padding-left:22px}
+.rule-card li{font-size:13px;line-height:1.75;color:#55604f;padding:4px 0 4px 4px}
+.rule-card li::marker{color:#89947d;font-weight:600}
+.rule-card p{font-size:13px;color:#808977;line-height:1.7;margin-bottom:8px}
+.note-card{background:#f8faf4}
+.register-facts{display:flex;flex-wrap:wrap;gap:6px 22px;margin:0 0 22px}
+.register-facts strong{color:var(--green)}
+.bring-list{margin:4px 0 16px;border:1px solid var(--line);border-radius:8px;padding:10px 14px}
+.bring-list summary{cursor:pointer;font-size:12px;font-weight:600;color:var(--green)}
+.bring-list ol,.bring-card ol,.confirmation-notes ol{margin:8px 0 0;padding-left:20px;font-size:12px;line-height:1.8;color:#66785a}
+.bring-card{margin-top:14px}
+.bring-card ol{margin-left:30px}
+.confirmation-notes{text-align:left}
+.confirmation-notes strong,.confirmation-notes span{display:block}
+.confirmation-notes span{margin-top:6px}
+.time-up-fields{margin-top:0}
+.time-up-fields .form-note{margin:0 0 12px}
+.settings-panel .text-link{font-size:12px}
+.settings-panel .text-link .icon{width:13px;height:13px}
+@media(max-width:1100px){.info-grid{grid-template-columns:1fr 1fr}.day-plan{gap:40px}}
+@media(max-width:850px){.day-plan{grid-template-columns:1fr;gap:34px}.rules-grid,.rules-extra{grid-template-columns:1fr}.rules-head h1{font-size:34px}.registration-layout .form-row{gap:0}}
+@media(max-width:580px){.essentials,.day-plan{padding:36px 0}.essentials-head{flex-direction:column;align-items:flex-start}.essentials-head h2,.day-plan h2{font-size:23px}.info-grid{gap:10px}.info-grid>div{padding:15px}.info-grid strong{font-size:20px}.prize-row{grid-template-columns:1fr;gap:10px}.prize{padding:16px 18px}.rules-page{padding:34px 0 48px}.rules-head h1{font-size:33px}.rule-card{padding:19px}.public-header nav>a:nth-child(3){font-size:11px}}

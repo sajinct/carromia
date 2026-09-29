@@ -17,7 +17,8 @@ test('Pages build is portable to a repository subpath and contains only static a
 });
 // An in-memory stand-in for the Supabase endpoints the live site calls, including the database rules.
 function fakeSupabase() {
-  const sample = seedDemo();
+  // The registration deadline is removed so this test passes on any date.
+  const sample = seedDemo(); sample.event.registrationDeadline = '';
   const db = { rows: { main: { version: 1, state: sample } }, pub: { main: { version: 1, state: publicState(sample) } }, saves: [], raceOnce: false };
   Object.defineProperty(db, 'public', { get: () => db.pub.main });
   const users = { 'asha@example.org': { id: 'u1', password: 'admin-pass', official: { name: 'Asha Admin', role: 'admin' } }, 'omar@example.org': { id: 'u2', password: 'official-pass', official: { name: 'Omar Official', role: 'official' } } };
@@ -42,7 +43,7 @@ function fakeSupabase() {
       case '/rest/v1/rpc/register_team': {
         const main = db.rows[body.p_event ?? 'main'];
         if (main.state.demo) return reply(400, { message: 'Registration will open soon. Please check back.' });
-        try { const team = addTeam(main.state, { name: body.p_name, parish: body.p_parish, players: body.p_players, primaryContact: body.p_primary }); main.version++; db.pub[body.p_event ?? 'main'] = { version: main.version, state: publicState(main.state) }; return reply(200, { team }); }
+        try { const team = addTeam(main.state, { name: body.p_name, parish: body.p_parish, players: body.p_players, primaryContact: body.p_primary, lunch: body.p_lunch, adults: body.p_adults }); main.version++; db.pub[body.p_event ?? 'main'] = { version: main.version, state: publicState(main.state) }; return reply(200, { team }); }
         catch (error) { return reply(400, { message: error.message }); }
       }
       case '/rest/v1/rpc/save_tournament': {
@@ -66,11 +67,11 @@ test('live Pages runtime: public view, official sign-in, roles, conflict retry, 
   globalThis.fetch = db.fetch; globalThis.location = { origin: 'https://sajinct.github.io', pathname: '/carromia/', search: '' };
   t.after(() => { globalThis.fetch = realFetch; delete globalThis.localStorage; delete globalThis.location; });
   const { remoteApi } = await import('../dist/runtime.js');
-  const players = [{ name: 'Arun', mobile: '9111111111' }, { name: 'Joel', mobile: '9222222222' }];
+  const players = [{ name: 'Arun', mobile: '9111111111' }, { name: 'Joel', mobile: '9222222222' }], adults = true;
 
   let state = await remoteApi('state');
   assert.equal(state.isAdmin, false); assert.equal(state.demo, true); assert.equal(state.teams.length, 16); assert.equal(state.teams[0].players[0].mobile, undefined); assert.equal(state.practiceAvailable, false);
-  await assert.rejects(remoteApi('register', { name: 'Real team', parish: 'P', players }), /open soon/);
+  await assert.rejects(remoteApi('register', { name: 'Real team', parish: 'P', players, adults }), /open soon/);
   await assert.rejects(remoteApi('assign', { id: 'M05', board: 1 }), /Sign in/);
   await assert.rejects(remoteApi('login', { email: 'omar@example.org', password: 'wrong' }), /Incorrect email or password/);
 
@@ -102,7 +103,7 @@ test('live Pages runtime: public view, official sign-in, roles, conflict retry, 
   await remoteApi('reset', { confirm: 'RESET' });
   await assert.rejects(remoteApi('demo'), /practice mode/, 'sample teams never go into the real event');
   await remoteApi('logout');
-  const { team } = await remoteApi('register', { name: 'Real Team', parish: 'St. Thomas', players });
+  const { team } = await remoteApi('register', { name: 'Real Team', parish: 'St. Thomas', players, lunch: 1, adults });
   assert.equal(team.id, 'CAR-001'); assert.equal((await remoteApi('state')).teams.length, 1);
 
   // Practice mode: a separate sample event; the real event and the public copy are untouched.
@@ -120,7 +121,7 @@ test('live Pages runtime: public view, official sign-in, roles, conflict retry, 
   // A TV or phone that is not signed in follows practice after opening a practice link.
   await remoteApi('logout');
   state = await remoteApi('state'); assert.equal(state.practice, true); assert.equal(state.isAdmin, false); assert.equal(state.teams.length, 0); assert.equal(state.practiceLinks.live, 'https://sajinct.github.io/carromia/?practice=1#/live');
-  const { team: practiceTeam } = await remoteApi('register', { name: 'Practice Pair', parish: 'P', players });
+  const { team: practiceTeam } = await remoteApi('register', { name: 'Practice Pair', parish: 'P', players, adults });
   assert.equal(practiceTeam.id, 'CAR-001'); assert.equal(db.rows.practice.state.teams.length, 1); assert.equal(db.rows.main.state.teams.length, 1, 'practice registrations stay out of the real event');
   assert.equal((await remoteApi('state')).teams[0].players[0].mobile, undefined);
   await remoteApi('demo').catch(() => {}); await remoteApi('login', { email: 'omar@example.org', password: 'official-pass' });
@@ -133,7 +134,7 @@ test('live Pages runtime: public view, official sign-in, roles, conflict retry, 
   await remoteApi('remove-team', { id: 'CAR-001' });
   assert.equal((await remoteApi('state')).teams.length, 0); assert.equal(db.public.state.teams.length, 0);
   await remoteApi('logout');
-  assert.equal((await remoteApi('register', { name: 'Next Team', parish: 'P', players })).team.id, 'CAR-002', 'removed IDs are not reused');
+  assert.equal((await remoteApi('register', { name: 'Next Team', parish: 'P', players, adults })).team.id, 'CAR-002', 'removed IDs are not reused');
 
   assert.deepEqual(db.saves.map(s => `${s.event}:${s.by}:${s.action}`), ['main:Omar Official:unassign', 'main:Omar Official:assign', 'main:Omar Official:start', 'main:Omar Official:checkin', 'main:Asha Admin:reset',
     'practice:Omar Official:unassign', 'practice:Omar Official:assign', 'practice:Omar Official:reset', 'practice:Omar Official:demo', 'main:Asha Admin:remove-team']);

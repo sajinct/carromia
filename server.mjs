@@ -4,7 +4,7 @@ import { join, extname } from 'node:path';
 import { randomBytes, timingSafeEqual } from 'node:crypto';
 import QRCode from 'qrcode';
 import { fileStore, supabaseStore, ConflictError } from './lib/store.mjs';
-import { emptyState, addTeam, eligible, fail, actions } from './lib/tournament.mjs';
+import { emptyState, addTeam, eligible, fail, actions, registrationStatus, defaults } from './lib/tournament.mjs';
 
 const port = Number(process.env.PORT || 3000);
 const host = process.env.HOST || '127.0.0.1';
@@ -42,7 +42,7 @@ function send(res, status, value) { res.writeHead(status, { 'Content-Type': 'app
 async function body(req) { let text = ''; for await (const chunk of req) { text += chunk; if (text.length > 20000) throw new Error('Request too large.'); } return JSON.parse(text || '{}'); }
 function view(user) {
   const isAdmin = Boolean(user);
-  return { ...state, teams: state.teams.map(({ checkinToken, ...t }) => ({ ...t, players: t.players.map(p => isAdmin ? p : { name: p.name }) })), activity: isAdmin ? state.activity : [], matches: state.matches.map(m => ({ ...m, blockedReason: eligible(state, m) })), isAdmin, user: user && { name: user.name, role: user.role }, authMode: supabase ? 'supabase' : 'password', localDemo: !supabase && !process.env.ADMIN_PASSWORD, serverTime: Date.now() };
+  return { ...state, event: { ...defaults, ...state.event }, teams: state.teams.map(({ checkinToken, ...t }) => ({ ...t, players: t.players.map(p => isAdmin ? p : { name: p.name }) })), activity: isAdmin ? state.activity : [], matches: state.matches.map(m => ({ ...m, blockedReason: eligible(state, m) })), registration: registrationStatus(state), isAdmin, user: user && { name: user.name, role: user.role }, authMode: supabase ? 'supabase' : 'password', localDemo: !supabase && !process.env.ADMIN_PASSWORD, serverTime: Date.now() };
 }
 const types = { '.html': 'text/html', '.css': 'text/css', '.js': 'text/javascript', '.svg': 'image/svg+xml', '.webmanifest': 'application/manifest+json', '.png': 'image/png', '.webp': 'image/webp' };
 const server = http.createServer(async (req, res) => {

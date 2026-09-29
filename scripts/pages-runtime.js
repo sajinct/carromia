@@ -4,7 +4,7 @@
 // Practice mode: any device opened with ?practice=1 (or switched from the desk) follows the
 // separate 'practice' event instead, so a TV, phones and the desk can rehearse the full flow
 // without touching the real event. It stays on until "Exit practice".
-import { emptyState, eligible, fail, freshEvent, publicState, practiceEvent, actions } from './tournament-browser.js';
+import { emptyState, eligible, fail, freshEvent, publicState, practiceEvent, actions, registrationStatus, defaults } from './tournament-browser.js';
 
 export const pagesMode = true;
 // The publishable key is meant for browsers; the database rules decide what it may do.
@@ -117,7 +117,7 @@ async function changePassword(input) {
 async function view(user) {
   const { state } = await load(user), practice = eventId() === 'practice';
   const teams = user ? state.teams.map(({ checkinToken, ...t }) => t) : state.teams;
-  return { ...state, practice, practiceAvailable: Boolean(user) || practice, practiceLinks: practice ? { live: practiceLink('/live'), register: practiceLink('/register'), desk: practiceLink('/admin') } : null, teams, activity: user ? state.activity : [], matches: state.matches.map(m => ({ ...m, blockedReason: eligible(state, m, now()) })), isAdmin: Boolean(user), user: user && { name: user.name, role: user.role }, authMode: 'supabase', localDemo: false, serverTime: now() };
+  return { ...state, event: { ...defaults, ...state.event }, practice, practiceAvailable: Boolean(user) || practice, practiceLinks: practice ? { live: practiceLink('/live'), register: practiceLink('/register'), desk: practiceLink('/admin') } : null, teams, activity: user ? state.activity : [], matches: state.matches.map(m => ({ ...m, blockedReason: eligible(state, m, now()) })), registration: registrationStatus({ ...state, practice }, now()), isAdmin: Boolean(user), user: user && { name: user.name, role: user.role }, authMode: 'supabase', localDemo: false, serverTime: now() };
 }
 
 // Officials are managed by the 'officials' Edge Function (supabase/functions/officials), which holds
@@ -140,7 +140,15 @@ export async function remoteApi(path, input = {}) {
   if (path === 'logout') { const token = readSession()?.access_token; writeSession(null); if (token) request('/auth/v1/logout', { method: 'POST', token }).catch(() => {}); return { ok: true }; }
   if (path === 'register') {
     const players = Array.isArray(input.players) ? input.players : [];
-    return request('/rest/v1/rpc/register_team', { method: 'POST', body: { p_name: input.name, p_parish: input.parish, p_players: players, p_primary: Number(input.primaryContact) === 1 ? 1 : 0, p_event: eventId() } });
+    fail(input.adults !== true, 'Confirm that both players are 18 or older.');
+    const body = { p_name: input.name, p_parish: input.parish, p_players: players, p_primary: Number(input.primaryContact) === 1 ? 1 : 0, p_event: eventId() };
+    try { return await request('/rest/v1/rpc/register_team', { method: 'POST', body: { ...body, p_lunch: Number(input.lunch) || 0, p_adults: true } }); }
+    catch (error) {
+      // Until 20261002000000_carromia_rules.sql is run, the database only knows the earlier
+      // registration (no lunch booking, slot or parish limits); registering still works.
+      if (error.status !== 404) throw error;
+      return request('/rest/v1/rpc/register_team', { method: 'POST', body });
+    }
   }
 
   const user = await official();

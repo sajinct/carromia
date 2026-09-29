@@ -13,7 +13,7 @@ https://sajinct.github.io/carromia/ is the live event site. The static app talks
 ### One-time setup
 
 1. In the Supabase dashboard open **SQL Editor** and run, in order:
-   `supabase/migrations/20260929000000_carromia_init.sql`, `supabase/migrations/20260929010000_carromia_live.sql`, `supabase/migrations/20260930000000_carromia_practice.sql`, then `supabase/migrations/20260930010000_carromia_practice_devices.sql`, then `supabase/migrations/20261001000000_carromia_harden_save.sql` (the database derives the public copy itself and refuses non-admin changes to settings, teams and the draw on the real event).
+   `supabase/migrations/20260929000000_carromia_init.sql`, `supabase/migrations/20260929010000_carromia_live.sql`, `supabase/migrations/20260930000000_carromia_practice.sql`, then `supabase/migrations/20260930010000_carromia_practice_devices.sql`, then `supabase/migrations/20261001000000_carromia_harden_save.sql` (the database derives the public copy itself and refuses non-admin changes to settings, teams and the draw on the real event), then `supabase/migrations/20261002000000_carromia_rules.sql` (registration enforces the team slots, teams per parish and deadline, records lunch bookings, and an event still on 10-minute matches moves to 30).
    Together they load the 16-team sample tournament into **practice mode** and open registration on the real event (existing real events are never overwritten; each file is safe to re-run).
 2. **Authentication → Users → Add user**: create an account for each official (tick *Auto confirm*).
 3. Make them officials in the SQL Editor (`admin` can change settings, create the draw and clear data; `official` runs check-in, boards and results):
@@ -28,11 +28,12 @@ https://sajinct.github.io/carromia/ is the live event site. The static app talks
 
 ### Registration, practice mode and team removal
 
-- **Registration** is open on the real event as soon as the setup is run. It closes when an admin unticks *Registration open* in Settings or creates the draw.
+- **Registration** is open on the real event as soon as the setup is run. It closes when an admin unticks *Registration open* in Settings or creates the draw, at the end of the registration deadline day (10 Nov 2026, India time), or when every team slot is taken (64). One parish can register up to 4 teams; parish names are compared without capitals, punctuation or the words "church" and "parish". Players confirm they are 18 or older and can pre-book lunch. Slots, teams per parish, deadline and entry fee are changed in **Event settings**; the deadline does not apply in practice mode.
+- **Event information and rules** shown on the home page and the **Rules** page (prizes, day schedule, Mass timings, documents to bring, the 16 rules) are in `public/info.js`.
 - **Practice mode** rehearses the whole event on a separate practice tournament, on any device. An official opens it from Settings → Open practice mode; the panel then shows links and QR codes for a **TV** (live boards), **phones** (registration) and **official phones** (desk). Any device opened with `?practice=1` follows the practice event and shows a yellow PRACTICE MODE banner until someone taps **Exit practice**. **Start empty practice** clears practice teams and opens practice registration (register → check in → draw → play → winners); **Load sample tournament** gives a ready-made draw. The public site and real registrations are never affected, and any official may try every action in practice.
 - **Removing a team** (admins, real event, before the draw): Teams → Remove. The team and its contact details are deleted and its ID is never reused. After the draw, teams can’t be removed because the bracket depends on them.
 - **Walkover / no-show** (admins): Match control → queue → **Walkover**. Choose the team that advances and a reason; the match is completed without play, no check-in or rest period is needed, and later rounds update. **Results → Undo walkover** puts it back in the queue while the next round hasn’t been called.
-- **Correcting a result** (admins): Results → **Correct**. Enter the right coin counts (and the tie-break decision if equal); the winner is worked out again and later rounds are re-derived. Possible only until the winner’s next match is called; the original time is kept and the result is marked *Corrected*.
+- **Correcting a result** (admins): Results → **Correct**. Enter the right games won, or the coins left if time ran out (and the tie-break if equal); the winner is worked out again and later rounds are re-derived. Possible only until the winner’s next match is called; the original time is kept and the result is marked *Corrected*.
 - **Starting over** (admins): Settings → Start a fresh event → type `RESET`. It clears teams, matches and results, keeps the event details and reopens registration.
 
 ### Preview the build locally
@@ -64,12 +65,12 @@ The server binds to **127.0.0.1 only** unless `HOST` is set. It is a local first
 
 ## Included
 
-- Public event page and exactly-two-player registration.
+- Public event page with entry fee, prizes, day schedule and a rules page; exactly-two-player registration with team slots, a per-parish limit, a deadline, the 18+ confirmation and lunch pre-booking.
 - Unique team IDs, downloadable check-in QR codes, and a mobile-friendly confirmation.
 - Password-protected desk with check-in, searchable teams, and contact details.
 - Randomized single-elimination draw for 2–128 teams with automatic byes.
 - Four boards, official-controlled assignment, countdowns, board reset and team rest periods.
-- Remaining-coin results (0–9), explicit tie-break decisions, and winner advancement.
+- Best-of-three results (games won), coins left (0–9) when the 30 minutes run out, recorded tie-breaks (Golden Pocket, sudden death), and winner advancement.
 - Public `/live` screen, bracket, result export, and event settings.
 - Local JSON persistence, realtime server events, full backup download.
 - Web app manifest, install icons, and an offline notice. Match operations require a connection.
@@ -82,11 +83,11 @@ The empty initial event has no fictional registrations. Use **Load sample tourna
 2. Register teams through `/register` and check them in at the desk.
 3. Review the team list, then create the draw. This closes registration.
 4. Assign eligible matches to free boards and press Start match when players are ready.
-5. When the timer ends, record each team's remaining coins. If a team clears all its coins before time, press **Coins cleared · End match** and enter 0 for that team; it wins immediately.
-6. Equal counts keep the board occupied until an official resolves the tie and records the method.
+5. A match is the best of three games in 30 minutes. As soon as a team has won two games, press **Two games won · End match** and enter the games won. If the time runs out first, press **Record result**, enter the games won so far and the coins each team has left on the board; the team with fewer coins left wins.
+6. Equal coin counts keep the board occupied for the tie-break: Golden Pocket (3 coins each, most pocketed wins), then sudden death. The official records the winner and which of the two decided it.
 7. Winners advance automatically. Boards become available after their reset period.
 
-Existing match timers keep the duration set at their start. Settings affect future starts. The default is 10 minutes playing, 5 minutes board reset, and no mandatory team rest until the committee confirms one. For quick local testing, set matches to 1 minute and board reset to 0; restore event settings afterward.
+Existing match timers keep the duration set at their start. Settings affect future starts. The default is a 30-minute match, 5 minutes board reset, and no mandatory team rest until the committee confirms one. For quick local testing, set matches to 1 minute and board reset to 0; restore event settings afterward.
 
 QR URLs use `PUBLIC_URL` if provided, otherwise `http://localhost:3000`. A phone cannot reach this local preview via its own localhost. Configure an HTTPS public origin and production hosting before distributing codes to players. A QR opens a check-in confirmation for a signed-in official; scanning alone never changes attendance.
 
@@ -121,10 +122,10 @@ Without Supabase, data lives in `data/tournament.json` (or the `DATA_DIR` enviro
 npm test
 ```
 
-Tests cover bracket completion for every team count from 2–128, byes, check-in and occupancy guards, timing, rest periods, invalid scores, ties, winner dependencies, API access control, private contact filtering, persistence, and QR generation.
+Tests cover bracket completion for every team count from 2–128, byes, registration limits and the deadline, check-in and occupancy guards, timing, rest periods, best-of-three and time-up results, invalid scores, ties, winner dependencies, API access control, private contact filtering, persistence, and QR generation.
 
 ## Before a real event
 
 This release is a local functional prototype. Production setup remains: HTTPS hosting, abuse protection beyond the basic per-connection registration limit (30 per 10 minutes), and backup/restore operations. Supabase storage and named officials are available (see above); desk sign-ins are held in server memory, so a restart signs officials out. It does not support concurrent server instances or draw editing; a result can be corrected only until the winner’s next match is called.
 
-Confirm event date, deadlines, fees, team capacity, tie-break/queen/foul/no-show rules, and rest policy. No payment collection or unconfirmed rules are implemented. The public information page describes the confirmed 10-minute rule; if the committee changes that rule, update the copy as well as the timer setting.
+The entry fee is shown but not collected or tracked by the app. The rules page and home page describe the published rules (best of three games in 30 minutes); if the committee changes them, update `public/info.js` as well as the timer setting.
