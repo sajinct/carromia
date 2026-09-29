@@ -93,7 +93,13 @@ const hosts = [
   { href: 'https://www.marymathachurchvijayanagar.com/', img: '/brand/mary-matha.webp', alt: 'Mary Matha Church emblem', name: 'Mary Matha Church', place: 'Vijayanagar, Bangalore' },
   { href: 'https://www.mandyadiocese.org/', img: '/brand/diocese-mandya.webp', alt: 'Diocese of Mandya seal', name: 'Diocese of Mandya', place: 'Syro-Malabar Catholic Diocese' }
 ];
-function publicHeader() { return `<header class="public-header">${logo()}<nav aria-label="Main navigation"><a href="/" class="${page === '/' ? 'selected' : ''}">The tournament</a><a href="/live">${icon('screen')} Live boards</a><a href="/rules" class="${page === '/rules' ? 'selected' : ''}">Rules</a><a href="/admin" class="btn outline small">Tournament desk ${icon('arrow')}</a></nav></header>`; }
+function publicHeader() { return `<header class="public-header">${logo()}<nav aria-label="Main navigation"><a href="/" class="${page === '/' ? 'selected' : ''}">The tournament</a><a href="/live">${icon('screen')} Live boards</a><a href="/rules" class="${page === '/rules' ? 'selected' : ''}">Rules</a><a href="/admin" class="btn outline small">Tournament desk ${icon('arrow')}</a></nav>${publicMenu()}</header>`; }
+// On phones the public links move into a menu at the top right.
+function publicMenu() {
+  const canRegister = !state.demo && state.registration?.open;
+  const links = [['/', 'grid', 'The tournament'], ...(canRegister ? [['/register', 'plus', 'Register your team']] : []), ['/live', 'screen', 'Live boards'], ['/rules', 'check', 'Rules'], ['/admin', 'shield', 'Tournament desk']];
+  return `<button class="menu-toggle" data-action="menu" aria-label="Menu" aria-controls="mobile-menu" aria-expanded="${menuOpen}">${icon('menu')}</button><div class="mobile-menu ${menuOpen ? 'open' : ''}" id="mobile-menu">${links.map(([p, i, text]) => `<a href="${p}" class="${page === p ? 'active' : ''}">${icon(i)} ${text}</a>`).join('')}</div>`;
+}
 function footer() { return `<footer><span>© ${esc(state.event.year)} CARROMIA · Hosted by Mary Matha Church, Vijayanagar · Diocese of Mandya</span><span class="footer-hosts">${hosts.map(h => `<a href="${h.href}" target="_blank" rel="noopener" title="${esc(h.name)}"><img src="${h.img}" alt="${esc(h.alt)}" width="26" height="26"></a>`).join('')}</span></footer>`; }
 function home() {
   const closed = state.demo || !state.registration.open, e = state.event, maps = `https://www.google.com/maps/search/?api=1&amp;query=${encodeURIComponent(state.event.venue)}`;

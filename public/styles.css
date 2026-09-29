@@ -226,3 +226,6 @@ a.ph-info-link:hover strong,.ph-info>a:hover strong{text-decoration:underline;te
 @media(max-width:1100px){.info-grid{grid-template-columns:1fr 1fr}.day-plan{gap:40px}}
 @media(max-width:850px){.day-plan{grid-template-columns:1fr;gap:34px}.rules-grid,.rules-extra{grid-template-columns:1fr}.rules-head h1{font-size:34px}.registration-layout .form-row{gap:0}}
 @media(max-width:580px){.essentials,.day-plan{padding:36px 0}.essentials-head{flex-direction:column;align-items:flex-start}.essentials-head h2,.day-plan h2{font-size:23px}.info-grid{gap:10px}.info-grid>div{padding:15px}.info-grid strong{font-size:20px}.prize-row{grid-template-columns:1fr;gap:10px}.prize{padding:16px 18px}.rules-page{padding:34px 0 48px}.rules-head h1{font-size:33px}.rule-card{padding:19px}.public-header nav>a:nth-child(3){font-size:11px}}
+
+/* Phones: the public links sit in the menu at the top right. */
+@media(max-width:580px){.public-header{position:relative}.public-header nav{display:none}.public-header .menu-toggle{margin-right:-8px}.public-header .mobile-menu{right:0;top:calc(100% - 8px)}}
