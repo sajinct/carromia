@@ -45,7 +45,7 @@ function view(user) {
   const isAdmin = Boolean(user);
   return { ...state, teams: state.teams.map(({ checkinToken, ...t }) => ({ ...t, players: t.players.map(p => isAdmin ? p : { name: p.name }) })), activity: isAdmin ? state.activity : [], matches: state.matches.map(m => ({ ...m, blockedReason: eligible(state, m) })), isAdmin, user: user && { name: user.name, role: user.role }, authMode: supabase ? 'supabase' : 'password', localDemo: !supabase && !process.env.ADMIN_PASSWORD, serverTime: Date.now() };
 }
-const types = { '.html': 'text/html', '.css': 'text/css', '.js': 'text/javascript', '.svg': 'image/svg+xml', '.webmanifest': 'application/manifest+json', '.png': 'image/png' };
+const types = { '.html': 'text/html', '.css': 'text/css', '.js': 'text/javascript', '.svg': 'image/svg+xml', '.webmanifest': 'application/manifest+json', '.png': 'image/png', '.webp': 'image/webp' };
 const server = http.createServer(async (req, res) => {
   res.setHeader('X-Content-Type-Options', 'nosniff'); res.setHeader('Referrer-Policy', 'no-referrer');
   res.setHeader('Content-Security-Policy', "default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'");
