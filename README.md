@@ -51,7 +51,7 @@ The empty initial event has no fictional registrations. Use **Load sample tourna
 2. Register teams through `/register` and check them in at the desk.
 3. Review the team list, then create the draw. This closes registration.
 4. Assign eligible matches to free boards and press Start match when players are ready.
-5. When the timer ends, record each team's remaining coins.
+5. When the timer ends, record each team's remaining coins. If a team clears all its coins before time, press **Coins cleared · End match** and enter 0 for that team; it wins immediately.
 6. Equal counts keep the board occupied until an official resolves the tie and records the method.
 7. Winners advance automatically. Boards become available after their reset period.
 
