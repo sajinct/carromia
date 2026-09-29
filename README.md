@@ -29,7 +29,7 @@ $env:ADMIN_PASSWORD = 'your-private-password'
 npm start
 ```
 
-The server binds to **127.0.0.1 only**. It is a local first version, not a publicly deployed service. Open multiple browser tabs to test realtime updates.
+The server binds to **127.0.0.1 only**. It is a local first version, not a publicly deployed service. Open multiple browser tabs to test realtime updates. Live connections are capped at 200 (`MAX_STREAMS`); extra viewers fall back to refreshing every 15 seconds.
 
 ## Included
 
@@ -43,7 +43,7 @@ The server binds to **127.0.0.1 only**. It is a local first version, not a publi
 - Local JSON persistence, realtime server events, full backup download.
 - Web app manifest, install icons, and an offline notice. Match operations require a connection.
 
-The empty initial event has no fictional registrations. Use **Load sample tournament** in the desk to explore 16 fictional teams. Sample mode blocks public registrations. Start a fresh event in Settings to use real data.
+The empty initial event has no fictional registrations. Use **Load sample tournament** in the desk to explore 16 fictional teams; your event details and timings are kept. Sample mode blocks public registrations. Start a fresh event in Settings to use real data.
 
 ## Event workflow
 
@@ -73,6 +73,6 @@ Tests cover bracket completion for every team count from 2–128, byes, check-in
 
 ## Before a real event
 
-This release is a local functional prototype. Production setup remains: HTTPS hosting, a shared transactional database (Supabase was proposed), named official accounts and audit history, rate limits for public registration, and backup/restore operations. The current file store supports one server process, and the desk uses one password with in-memory sessions. It does not support concurrent server instances, result corrections after advancement, no-show forfeits, or draw editing.
+This release is a local functional prototype. Production setup remains: HTTPS hosting, a shared transactional database (Supabase was proposed), named official accounts and audit history, abuse protection beyond the basic per-connection registration limit (30 per 10 minutes), and backup/restore operations. The current file store supports one server process, and the desk uses one password with in-memory sessions. It does not support concurrent server instances, result corrections after advancement, no-show forfeits, or draw editing.
 
 Confirm event date, deadlines, fees, team capacity, tie-break/queen/foul/no-show rules, and rest policy. No payment collection or unconfirmed rules are implemented. The public information page describes the confirmed 10-minute rule; if the committee changes that rule, update the copy as well as the timer setting.
