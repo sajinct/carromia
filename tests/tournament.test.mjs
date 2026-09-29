@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { emptyState, addTeam, createDraw, assign, start, result, eligible, updateSettings, boardReady, removeTeam, practiceEvent, publicState, walkover, undoWalkover, correctResult, unassign } from '../lib/tournament.mjs';
+import { emptyState, addTeam, createDraw, assign, start, result, eligible, updateSettings, boardReady, removeTeam, practiceEvent, publicState, walkover, undoWalkover, correctResult, unassign, actions } from '../lib/tournament.mjs';
 function setup(n) { const s = emptyState(); for (let i = 1; i <= n; i++) { const t = addTeam(s, { name: `Team ${i}`, parish: 'Parish', players: [{ name: `P${i} A`, mobile: '9000000000' }, { name: `P${i} B`, mobile: '9000000001' }] }); t.checkedIn = true; } return s; }
 test('registration requires exactly two valid players and unique team names', () => { const s = setup(1); assert.throws(() => addTeam(s, { name: 'New', parish: 'Parish', players: [] }), /exactly two/); assert.throws(() => addTeam(s, { ...s.teams[0] }), /already registered/); assert.equal(s.teams.length, 1); });
 test('draw handles every team count from 2 to 128 with one champion and n-1 actual matches', () => {
@@ -92,4 +92,12 @@ test('a recorded score can be corrected until the next round is called; the brac
   assign(s, final.id, 1, 700000); start(s, final.id, 700000); result(s, final.id, { a: 1, b: 2 }, 1300000);
   assert.throws(() => correctResult(s, m1.id, { a: 4, b: 0 }), /already been played/);
   assert.throws(() => correctResult(s, 'M99', { a: 1, b: 2 }), /Only a played/);
+});
+test('the action registry names every desk action and flags the admin-only ones', () => {
+  assert.deepEqual(Object.keys(actions).sort(), ['assign', 'board-ready', 'checkin', 'correct-result', 'demo', 'draw', 'remove-team', 'reset', 'result', 'settings', 'start', 'unassign', 'undo-walkover', 'walkover']);
+  assert.deepEqual(Object.entries(actions).filter(([, a]) => a.admin).map(([k]) => k).sort(), ['correct-result', 'demo', 'draw', 'remove-team', 'reset', 'settings', 'undo-walkover', 'walkover']);
+  const s = setup(2); actions.draw.run(s, {}, {}); actions.assign.run(s, { id: 'M01', board: 1 }, { now: 0 }); actions.start.run(s, { id: 'M01' }, { now: 0 });
+  actions.result.run(s, { id: 'M01', a: 1, b: 3 }, { now: 600000, official: 'Asha Admin' }); assert.equal(s.matches[0].official, 'Asha Admin');
+  assert.equal(actions.settings.run(s, { name: 'Cup', venue: 'Hall', durationMinutes: 8, resetMinutes: 2, restMinutes: 0 }, {}), undefined); assert.equal(s.event.name, 'Cup'); assert.match(s.activity[0].message, /settings updated/);
+  const fresh = actions.reset.run(s, { confirm: 'RESET' }, {}); assert.equal(fresh.teams.length, 0); assert.equal(fresh.event.name, 'Cup');
 });

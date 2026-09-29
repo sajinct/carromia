@@ -4,14 +4,20 @@
 // Practice mode: any device opened with ?practice=1 (or switched from the desk) follows the
 // separate 'practice' event instead, so a TV, phones and the desk can rehearse the full flow
 // without touching the real event. It stays on until "Exit practice".
-import { emptyState, createDraw, assign, start, result, eligible, fail, updateSettings, checkIn, unassign, freshEvent, publicState, log, boardReady, removeTeam, practiceEvent, walkover, undoWalkover, correctResult } from './tournament-browser.js';
+import { emptyState, eligible, fail, freshEvent, publicState, practiceEvent, actions } from './tournament-browser.js';
 
 export const pagesMode = true;
 // The publishable key is meant for browsers; the database rules decide what it may do.
 const SUPABASE_URL = 'https://vzxcqpgwvknonkhjinuk.supabase.co';
 const PUBLISHABLE_KEY = 'sb_publishable_HdgK5UXMha3bvF5mk7o1Yw_eMN6h_Ro';
 const SESSION_KEY = 'carromia-official-session', PRACTICE_KEY = 'carromia-practice';
-const adminOnly = new Set(['draw', 'settings', 'demo', 'reset', 'backup', 'remove-team', 'walkover', 'undo-walkover', 'correct-result']);
+// The engine's actions, with the two that differ on the live site: sample teams live only in the
+// practice event, and resetting practice gives an empty practice event with registration open.
+const handlers = {
+  ...actions,
+  demo: { admin: true, run: (state, input, { event }) => { fail(event !== 'practice', 'Sample teams live in practice mode, so they never mix with real registrations.'); return practiceEvent(state.event); } },
+  reset: { admin: true, run: (state, input, { event }) => event === 'practice' ? { ...freshEvent(state, input.confirm), practice: true } : freshEvent(state, input.confirm) }
+};
 let offset = 0, clockSynced = false;
 const now = () => Date.now() + offset;
 
@@ -123,28 +129,12 @@ export async function remoteApi(path, input = {}) {
   if (path === 'state') return view(user);
   if (officialActions[path]) return manageOfficials(user, officialActions[path], input);
   fail(!user, 'Sign in to the tournament desk first.');
+  if (path === 'backup') { fail(user.role !== 'admin', 'Only an event admin can download backups.'); return (await load(user)).state; }
+  const action = handlers[path];
+  fail(!action, 'This action is not available.');
   // In practice mode every official may try every action; the real event keeps admin-only actions.
-  fail(adminOnly.has(path) && user.role !== 'admin' && !(practiceOn() && path !== 'backup'), 'Only an event admin can do this.');
-  if (path === 'backup') return (await load(user)).state;
-  const actions = {
-    checkin: state => checkIn(state, input),
-    draw: state => createDraw(state),
-    assign: state => assign(state, input.id, input.board, now()),
-    start: state => start(state, input.id, now()),
-    result: state => result(state, input.id, input, now(), user.name),
-    'correct-result': state => correctResult(state, input.id, input, now(), user.name),
-    walkover: state => walkover(state, input.id, input.winner, input.reason, now(), user.name),
-    'undo-walkover': state => undoWalkover(state, input.id, now()),
-    unassign: state => unassign(state, input.id),
-    'board-ready': state => boardReady(state, input.board, now()),
-    settings: state => { updateSettings(state, input); log(state, 'Event settings updated'); },
-    'remove-team': state => removeTeam(state, input.id),
-    demo: (state, id) => { fail(id !== 'practice', 'Sample teams live in practice mode, so they never mix with real registrations.'); return practiceEvent(state.event); },
-    // Resetting practice gives an empty practice event with registration open, ready for a full rehearsal.
-    reset: (state, id) => id === 'practice' ? { ...freshEvent(state, input.confirm), practice: true } : freshEvent(state, input.confirm)
-  };
-  fail(!actions[path], 'This action is not available.');
-  await change(user, path, input, actions[path]);
+  fail(action.admin && user.role !== 'admin' && !practiceOn(), 'Only an event admin can do this.');
+  await change(user, path, input, (state, event) => action.run(state, input, { now: now(), official: user.name, event }));
   return { ok: true };
 }
 

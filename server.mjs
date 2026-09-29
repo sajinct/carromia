@@ -4,7 +4,7 @@ import { join, extname } from 'node:path';
 import { randomBytes, timingSafeEqual } from 'node:crypto';
 import QRCode from 'qrcode';
 import { fileStore, supabaseStore, ConflictError } from './lib/store.mjs';
-import { emptyState, addTeam, createDraw, assign, start, result, eligible, log, fail, updateSettings, checkIn, unassign, freshEvent, loadSample, boardReady, removeTeam, walkover, undoWalkover, correctResult } from './lib/tournament.mjs';
+import { emptyState, addTeam, eligible, fail, actions } from './lib/tournament.mjs';
 
 const port = Number(process.env.PORT || 3000);
 const host = process.env.HOST || '127.0.0.1';
@@ -37,7 +37,6 @@ function signIn(res, user) {
   const token = randomBytes(32).toString('hex'); sessions.set(token, { expires: Date.now() + 12 * 3600000, user });
   res.setHeader('Set-Cookie', `carromia_session=${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=43200${process.env.PUBLIC_URL?.startsWith('https:') ? '; Secure' : ''}`);
 }
-const adminOnly = new Set(['/api/draw', '/api/settings', '/api/demo', '/api/reset', '/api/remove-team', '/api/walkover', '/api/undo-walkover', '/api/correct-result']);
 const auditDetail = ({ token, confirm, password, ...input }) => input;
 function send(res, status, value) { res.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }); res.end(JSON.stringify(value)); }
 async function body(req) { let text = ''; for await (const chunk of req) { text += chunk; if (text.length > 20000) throw new Error('Request too large.'); } return JSON.parse(text || '{}'); }
@@ -83,26 +82,10 @@ const server = http.createServer(async (req, res) => {
       if (url.pathname === '/api/register') { if (limited(`register:${req.socket.remoteAddress}`, 30, 600000)) return send(res, 429, { error: 'Too many registrations from this connection. Try again in a few minutes.' }); const team = await change(() => { fail(state.demo, 'Sample tournament is active. Start a fresh event from Settings to accept registrations.'); return addTeam(state, input); }); store.audit({ actor_name: 'Public registration', action: 'register', detail: { team: team.id, name: team.name } }); return send(res, 201, { team }); }
       const user = official(req);
       if (!user) return send(res, 401, { error: 'Sign in to the tournament desk first.' });
-      if (adminOnly.has(url.pathname) && user.role !== 'admin') return send(res, 403, { error: 'Only an event admin can do this.' });
-      await change(() => {
-        switch (url.pathname) {
-          case '/api/checkin': checkIn(state, input); break;
-          case '/api/draw': createDraw(state); break;
-          case '/api/assign': assign(state, input.id, input.board); break;
-          case '/api/start': start(state, input.id); break;
-          case '/api/result': result(state, input.id, input, Date.now(), user.name); break;
-          case '/api/correct-result': correctResult(state, input.id, input, Date.now(), user.name); break;
-          case '/api/walkover': walkover(state, input.id, input.winner, input.reason, Date.now(), user.name); break;
-          case '/api/undo-walkover': undoWalkover(state, input.id); break;
-          case '/api/unassign': unassign(state, input.id); break;
-          case '/api/board-ready': boardReady(state, input.board); break;
-          case '/api/remove-team': removeTeam(state, input.id); break;
-          case '/api/settings': updateSettings(state, input); log(state, 'Event settings updated'); break;
-          case '/api/demo': state = loadSample(state); break;
-          case '/api/reset': state = freshEvent(state, input.confirm); break;
-          default: throw Object.assign(new Error('Endpoint not found.'), { status: 404 });
-        }
-      });
+      const action = actions[url.pathname.slice(5)];
+      if (!action) return send(res, 404, { error: 'Endpoint not found.' });
+      if (action.admin && user.role !== 'admin') return send(res, 403, { error: 'Only an event admin can do this.' });
+      await change(() => { const next = action.run(state, input, { now: Date.now(), official: user.name }); if (next) state = next; });
       store.audit({ actor_id: user.id, actor_name: user.name, action: url.pathname.slice(5), detail: auditDetail(input) });
       return send(res, 200, { ok: true });
     }
