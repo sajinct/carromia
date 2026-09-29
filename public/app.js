@@ -42,8 +42,14 @@ async function api(path, data) {
   const value = await res.json(); if (!res.ok) throw new Error(value.error || 'Request failed.'); return value;
 }
 function toast(message, error = false) { const t = $('#toast'); t.textContent = message; t.className = error ? 'show error' : 'show'; clearTimeout(toast.timer); toast.timer = setTimeout(() => t.className = '', 5000); }
+// True while someone is typing, has unsaved form input (including autofill) or a dialog is open.
+function busy() {
+  if (modal.open || document.activeElement?.matches('input, textarea, select')) return true;
+  return [...app.querySelectorAll('form input, form textarea, form select')].some(el => el.type === 'checkbox' || el.type === 'radio' ? el.checked !== el.defaultChecked : el.tagName === 'SELECT' ? [...el.options].some(o => o.selected !== o.defaultSelected) : el.value !== el.defaultValue);
+}
+// renderPage: true = always redraw; 'auto' = background refresh, redraw only when nobody is mid-input.
 async function sync(renderPage = true) {
-  try { state = await api('state'); offset = state.serverTime - Date.now(); connected = true; if (renderPage) render(); }
+  try { state = await api('state'); offset = state.serverTime - Date.now(); connected = true; if (renderPage === true || (renderPage === 'auto' && !busy() && !['/register', '/admin/settings'].includes(page))) render(); }
   catch (e) { connected = false; if (!state) app.innerHTML = `<div class="error-screen"><h1>Unable to reach the tournament</h1><p>${pagesMode ? 'Check your internet connection and try again.' : 'Make sure the local server is running.'}</p><button class="btn primary" data-action="retry">Try again</button></div>`; }
   updateConnection();
 }
@@ -63,7 +69,13 @@ function render() {
     app.querySelectorAll('img[src^="/"]').forEach(img => img.setAttribute('src', `.${img.getAttribute('src')}`));
     app.querySelectorAll('img[data-practice-qr]').forEach(async img => { try { img.src = (await api(`practice-qr?route=${encodeURIComponent(img.dataset.practiceQr)}`)).qr; } catch { img.hidden = true; } });
   }
-  updateConnection(); tick();
+  labelTables(app); updateConnection(); tick();
+}
+function labelTables(root) {
+  root.querySelectorAll('table').forEach(table => {
+    const heads = [...table.querySelectorAll('thead th')].map(th => th.textContent.trim());
+    table.querySelectorAll('tbody tr').forEach(tr => [...tr.children].forEach((td, i) => { if (heads[i]) td.dataset.label = heads[i]; }));
+  });
 }
 const hosts = [
   { href: 'https://www.marymathachurchvijayanagar.com/', img: '/brand/mary-matha.webp', alt: 'Mary Matha Church emblem', name: 'Mary Matha Church', place: 'Vijayanagar, Bangalore' },
@@ -171,7 +183,7 @@ document.addEventListener('click', async event => {
     await sync();
   } catch (error) { toast(error.message, true); b.disabled = false; }
 });
-document.addEventListener('input', event => { if (event.target.id === 'team-search') { teamSearch = event.target.value; $('#team-table').innerHTML = teamTable(); } });
+document.addEventListener('input', event => { if (event.target.id === 'team-search') { teamSearch = event.target.value; $('#team-table').innerHTML = teamTable(); labelTables($('#team-table')); } });
 document.addEventListener('submit', async event => {
   event.preventDefault(); const form = event.target, fields = Object.fromEntries(new FormData(form)); const button = $('button[type="submit"], button:not([type])', form), errorEl = $('.form-error', form); if (button) button.disabled = true; if (errorEl) errorEl.textContent = '';
   try {
@@ -207,13 +219,13 @@ function tick() {
 window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); installPrompt = e; });
 await sync();
 if (pagesMode) {
-  watch(() => sync(!modal.open && !['/register', '/admin/settings'].includes(page) && !$('#team-search:focus')));
+  watch(() => sync('auto'));
 } else {
   const events = new EventSource('/api/events');
-  events.onmessage = () => sync(!['/register', '/admin/settings'].includes(page) && !$('#team-search:focus'));
+  events.onmessage = () => sync('auto');
   events.onopen = () => { connected = true; updateConnection(); };
   events.onerror = () => { connected = false; updateConnection(); };
 }
 setInterval(tick, 1000);
-setInterval(() => sync(!modal.open && !['/register', '/admin/settings'].includes(page) && !$('#team-search:focus')), 15000);
+setInterval(() => sync('auto'), 15000);
 if ('serviceWorker' in navigator) navigator.serviceWorker.register(pagesMode ? './sw.js' : '/sw.js').catch(() => {});

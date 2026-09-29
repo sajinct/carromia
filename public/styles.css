@@ -109,3 +109,33 @@ a.ph-info-link:hover strong,.ph-info>a:hover strong{text-decoration:underline;te
 .live-foot-links{display:flex;align-items:center;gap:18px;flex-wrap:wrap}
 .practice-switch{font-size:inherit;color:#a0741b;text-decoration:underline;text-underline-offset:3px;padding:0}
 .practice-switch:hover{color:#6d4c07}
+/* Phones: full-width cards, readable text, comfortable tap targets, tables as labelled cards. */
+@media(max-width:600px){
+  .login-layout{padding:28px 0 40px}
+  .login-card{width:100%;padding:26px 20px}
+  input,select,textarea{font-size:16px}
+  .boards-grid{grid-template-columns:1fr}
+  .form-row:not(.thirds){grid-template-columns:1fr;gap:0}
+  small{font-size:11px}
+  .badge{font-size:10px;padding:5px 8px}
+  .eyebrow{font-size:10px}
+  .btn{font-size:13px;min-height:44px}
+  .btn.small{font-size:13px;min-height:42px}
+  .btn.tiny{font-size:12px;min-height:36px;padding:8px 12px}
+  .public-header nav .btn{font-size:11px;min-height:38px;padding:8px 11px}
+  .public-header .brand small{font-size:6px}
+  footer{font-size:11px}
+  .facts span{font-size:10px}
+  .facts p{font-size:12px}
+  .live-boards .winner-name{font-size:22px}
+  .table-wrap table{min-width:0;width:100%}
+  .table-wrap thead{display:none}
+  .table-wrap table,.table-wrap tbody{display:block;width:100%}
+  .table-wrap tr{display:grid;grid-template-columns:1fr 1fr;gap:10px 14px;padding:14px 16px;border-bottom:1px solid var(--line)}
+  .table-wrap td{display:block;padding:0;border:0;font-size:13px;min-width:0;overflow-wrap:anywhere}
+  .table-wrap td:first-child{grid-column:1/-1;font-size:15px}
+  .table-wrap td[data-label]:not(:first-child)::before{content:attr(data-label);display:block;margin-bottom:3px;font-size:10px;font-weight:600;letter-spacing:1px;text-transform:uppercase;color:var(--muted)}
+  .table-wrap td:empty{display:none}
+}
+@media(max-width:600px){.table-wrap .queue-table td{padding:0;min-width:0;font-size:13px}.table-wrap .queue-table td:nth-child(2) strong{font-size:13px}}
+@media(max-width:600px){.queue-panel .table-wrap table{min-width:0}}
