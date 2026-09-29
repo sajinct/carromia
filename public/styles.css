@@ -93,3 +93,7 @@ a.ph-info-link:hover strong,.ph-info>a:hover strong{text-decoration:underline;te
 .live-boards .winner-score b{font-size:40px}
 .live-boards .winner-how{font-size:12px}
 .live-boards .winner-eyebrow{font-size:11px}
+.practice-banner{position:sticky;top:0;z-index:30;display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:8px 14px;padding:9px 16px;background:#fff1c9;border-bottom:1px solid #f0d58a;color:#6d4c07;font-size:12px;text-align:center}
+.practice-banner strong{letter-spacing:1.5px;font-size:11px}
+.practice-banner .btn{background:#6d4c07;color:#fff}
+.dialog-actions{display:flex;gap:10px;justify-content:flex-end;margin-top:18px;flex-wrap:wrap}

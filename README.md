@@ -13,8 +13,8 @@ https://sajinct.github.io/carromia/ is the live event site. The static app talks
 ### One-time setup
 
 1. In the Supabase dashboard open **SQL Editor** and run, in order:
-   `supabase/migrations/20260929000000_carromia_init.sql`, then `supabase/migrations/20260929010000_carromia_live.sql`.
-   The second file also loads the 16-team sample tournament (it never overwrites an existing event, and is safe to re-run).
+   `supabase/migrations/20260929000000_carromia_init.sql`, `supabase/migrations/20260929010000_carromia_live.sql`, then `supabase/migrations/20260930000000_carromia_practice.sql`.
+   Together they load the 16-team sample tournament into **practice mode** and open registration on the real event (existing real events are never overwritten; each file is safe to re-run).
 2. **Authentication → Users → Add user**: create an account for each official (tick *Auto confirm*).
 3. Make them officials in the SQL Editor (`admin` can change settings, create the draw and clear data; `official` runs check-in, boards and results):
 
@@ -24,9 +24,12 @@ https://sajinct.github.io/carromia/ is the live event site. The static app talks
    ```
 4. Recommended: **Authentication → Sign In / Providers → turn off "Allow new users to sign up"**, so only accounts you create exist.
 
-### Before the real event: clear the sample data
+### Registration, practice mode and team removal
 
-Sign in as an admin → **Settings → Start a fresh event** → **Download backup** (optional) → type `RESET`. This removes the sample teams, matches and results, keeps the event details (date, time, venue, timings) and reopens registration.
+- **Registration** is open on the real event as soon as the setup is run. It closes when an admin unticks *Registration open* in Settings or creates the draw.
+- **Practice mode** (Settings → Open practice mode, or the button on an empty dashboard) switches only that browser to a separate sample tournament for training. Every page shows a yellow PRACTICE MODE banner; the public site and real registrations are never affected. Any official may try every action there, and **Reset practice** restores the sample. Signing out leaves practice mode.
+- **Removing a team** (admins, real event, before the draw): Teams → Remove. The team and its contact details are deleted and its ID is never reused. After the draw, teams can’t be removed because the bracket depends on them.
+- **Starting over** (admins): Settings → Start a fresh event → type `RESET`. It clears teams, matches and results, keeps the event details and reopens registration.
 
 ### Preview the build locally
 

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { emptyState, addTeam, createDraw, assign, start, result, eligible, updateSettings, boardReady } from '../lib/tournament.mjs';
+import { emptyState, addTeam, createDraw, assign, start, result, eligible, updateSettings, boardReady, removeTeam, practiceEvent, publicState } from '../lib/tournament.mjs';
 function setup(n) { const s = emptyState(); for (let i = 1; i <= n; i++) { const t = addTeam(s, { name: `Team ${i}`, parish: 'Parish', players: [{ name: `P${i} A`, mobile: '9000000000' }, { name: `P${i} B`, mobile: '9000000001' }] }); t.checkedIn = true; } return s; }
 test('registration requires exactly two valid players and unique team names', () => { const s = setup(1); assert.throws(() => addTeam(s, { name: 'New', parish: 'Parish', players: [] }), /exactly two/); assert.throws(() => addTeam(s, { ...s.teams[0] }), /already registered/); assert.equal(s.teams.length, 1); });
 test('draw handles every team count from 2 to 128 with one champion and n-1 actual matches', () => {
@@ -41,4 +41,17 @@ test('officials can end a board reset early; only a resetting, empty board can b
   assign(s, 'M02', 1, 620000); assert.equal(s.matches[1].board, 1);
   assert.throws(() => boardReady(s, 2, 620000), /already available/); assert.throws(() => boardReady(s, 9, 620000), /not found/);
   assert.equal(s.matches[0].board, 1, 'the finished match keeps its board so the winner can be shown there');
+});
+test('admins can remove teams before the draw; removed IDs are never reused', () => {
+  const s = setup(3); removeTeam(s, 'CAR-002');
+  assert.deepEqual(s.teams.map(t => t.id), ['CAR-001', 'CAR-003']); assert.match(s.activity[0].message, /Team 2 \(CAR-002\) removed/);
+  const t = addTeam(s, { name: 'Late Entry', parish: 'P', players: [{ name: 'A', mobile: '9000000000' }, { name: 'B', mobile: '9000000001' }] }); assert.equal(t.id, 'CAR-004');
+  removeTeam(s, 'CAR-004'); assert.equal(addTeam(s, { name: 'Another', parish: 'P', players: [{ name: 'A', mobile: '9000000000' }, { name: 'B', mobile: '9000000001' }] }).id, 'CAR-005', 'even the newest ID is not reused');
+  assert.throws(() => removeTeam(s, 'CAR-999'), /not found/);
+  createDraw(s); assert.throws(() => removeTeam(s, 'CAR-001'), /after the draw/);
+});
+test('the practice event is the sample tournament with the real event details and is marked practice', () => {
+  const p = practiceEvent({ ...emptyState().event, venue: 'Hall B', registrationOpen: true });
+  assert.equal(p.practice, true); assert.equal(p.demo, true); assert.equal(p.teams.length, 16); assert.equal(p.event.venue, 'Hall B'); assert.equal(p.event.registrationOpen, false);
+  assert.equal(publicState(p).teams[0].players[0].mobile, undefined);
 });
