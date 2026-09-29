@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { emptyState, addTeam, createDraw, assign, start, result, eligible, updateSettings, boardReady, removeTeam, practiceEvent, publicState, walkover, undoWalkover, correctResult, unassign, actions, registrationStatus, parishKey, playerPhotos, seedDemo } from '../lib/tournament.mjs';
+import { emptyState, addTeam, createDraw, assign, start, result, eligible, updateSettings, boardReady, removeTeam, practiceEvent, publicState, walkover, undoWalkover, correctResult, unassign, actions, registrationStatus, parishKey, playerPhotos, seedDemo, paymentProof, confirmPayment, checkIn, isConfirmed } from '../lib/tournament.mjs';
 import { centres, groups, findCentre } from '../public/parishes.js';
 import { centre, player, photo } from './registration-fixture.mjs';
 // A team from the i-th parish or centre of the diocese register.
@@ -41,6 +41,39 @@ test('registration records the parish or centre from the register and each playe
   assert.throws(() => playerPhotos({ players: [player('A'), { ...player('B'), photo: 'data:image/jpeg;base64,' + 'A'.repeat(200000) }] }), /photo of each player/);
   assert.ok(!JSON.stringify(s).includes('base64'));
   assert.ok(seedDemo().teams.every(t => findCentre(t.forane, t.parish, t.centreType) && t.players.every(p => p.idType && p.idLast4.length === 4)), 'sample teams use the register too');
+});
+test('event settings: payment at registration needs a UPI QR code; support contacts', () => {
+  const s = open(), base = { name: 'Cup', venue: 'Hall', durationMinutes: 30, resetMinutes: 5, restMinutes: 0 }, qr = photo.replace('jpeg', 'png');
+  assert.throws(() => updateSettings(open(), { ...base, paymentRequired: true }), /Upload the UPI QR code/);
+  assert.throws(() => updateSettings(open(), { ...base, upiQr: 'data:image/gif;base64,AAAA' }), /PNG or JPEG/);
+  assert.throws(() => updateSettings(open(), { ...base, upiId: 'not an id' }), /valid UPI ID/);
+  assert.throws(() => updateSettings(open(), { ...base, contacts: [{ name: 'Fr. Joseph', phone: '12' }] }), /valid phone number/);
+  assert.throws(() => updateSettings(open(), { ...base, contacts: [1, 2, 3, 4].map(i => ({ name: 'N' + i, phone: '9876543210' })) }), /up to 3/);
+  updateSettings(s, { ...base, paymentRequired: true, upiQr: qr, upiId: 'carromia@okaxis', contacts: [{ name: ' Fr. Joseph ', phone: '9876543210' }, { name: '', phone: '' }] });
+  assert.deepEqual([s.event.paymentRequired, s.event.upiQr, s.event.upiId, s.event.contacts], [true, qr, 'carromia@okaxis', [{ name: 'Fr. Joseph', phone: '9876543210' }]]);
+  assert.throws(() => updateSettings(s, { ...base, upiQr: '' }), /Upload the UPI QR code/, 'the QR can’t be removed while payment is on');
+  updateSettings(s, { ...base, paymentRequired: false, upiQr: '' }); assert.equal(s.event.paymentRequired, false);
+});
+test('payment at registration: pending until the desk confirms; pending teams can’t check in or play', () => {
+  const s = open(); s.event.paymentRequired = true;
+  assert.throws(() => addTeam(s, entry('No proof')), /transaction number or add a payment screenshot/);
+  assert.throws(() => addTeam(s, { ...entry('Bad ref'), payment: { txnRef: '12-34' } }), /6 to 30 letters or digits/);
+  assert.throws(() => paymentProof({ payment: { screenshot: 'data:image/png;base64,AAAA' } }), /payment screenshot/);
+  const a = addTeam(s, { ...entry('By ref'), payment: { txnRef: ' 4123 5678 9012 ' } }), b = addTeam(s, { ...entry('By screenshot', 1), payment: { screenshot: photo } });
+  assert.deepEqual([a.status, a.payment], ['pending', { amount: 500, txnRef: '412356789012', screenshot: false }]);
+  assert.deepEqual([b.status, b.payment.screenshot, JSON.stringify(s).includes('base64')], ['pending', true, false]);
+  assert.equal(registrationStatus(s).slotsLeft, 126, 'pending teams hold their slots');
+  assert.throws(() => checkIn(s, { id: a.id }), /hasn’t been confirmed/);
+  assert.throws(() => createDraw(s, false), /Confirm at least two teams/);
+  confirmPayment(s, a.id, 1000, 'Omar Official');
+  assert.deepEqual([a.status, a.confirmedAt, a.confirmedBy], ['confirmed', 1000, 'Omar Official']); assert.match(s.activity[0].message, /By ref payment confirmed by Omar Official/);
+  assert.throws(() => confirmPayment(s, a.id), /already confirmed/);
+  checkIn(s, { id: a.id }); assert.equal(a.checkedIn, true);
+  // The draw leaves the pending team out.
+  s.event.paymentRequired = false; const c = addTeam(s, entry('Free', 2)); assert.equal(c.status, 'confirmed');
+  createDraw(s, false); const drawn = s.matches.flatMap(m => [m.teamA, m.teamB]);
+  assert.ok(drawn.includes(a.id) && drawn.includes(c.id) && !drawn.includes(b.id)); assert.ok(s.activity.some(x => /1 team awaiting payment left out/.test(x.message)));
+  assert.equal(isConfirmed({ id: 'CAR-009' }), true, 'teams saved before payments existed count as confirmed');
 });
 test('registration limits: team slots, teams per parish, deadline and lunch booking', () => {
   const s = emptyState(), before = Date.parse('2026-11-10T18:29:00Z'), after = Date.parse('2026-11-10T18:30:00Z');
@@ -180,7 +213,7 @@ test('a recorded score can be corrected until the next round is called; the brac
   assert.throws(() => correctResult(s, 'M99', A_WINS), /Only a played/);
 });
 test('the action registry names every desk action and flags the admin-only ones', () => {
-  assert.deepEqual(Object.keys(actions).sort(), ['assign', 'board-ready', 'checkin', 'correct-result', 'demo', 'draw', 'remove-team', 'reset', 'result', 'settings', 'start', 'unassign', 'undo-walkover', 'walkover']);
+  assert.deepEqual(Object.keys(actions).sort(), ['assign', 'board-ready', 'checkin', 'confirm-payment', 'correct-result', 'demo', 'draw', 'remove-team', 'reset', 'result', 'settings', 'start', 'unassign', 'undo-walkover', 'walkover']);
   assert.deepEqual(Object.entries(actions).filter(([, a]) => a.admin).map(([k]) => k).sort(), ['correct-result', 'demo', 'draw', 'remove-team', 'reset', 'settings', 'undo-walkover', 'walkover']);
   const s = setup(2); actions.draw.run(s, {}, {}); actions.assign.run(s, { id: 'M01', board: 1 }, { now: 0 }); actions.start.run(s, { id: 'M01' }, { now: 0 });
   actions.result.run(s, { id: 'M01', gamesA: 2, gamesB: 1 }, { now: 600000, official: 'Asha Admin' }); assert.equal(s.matches[0].official, 'Asha Admin');

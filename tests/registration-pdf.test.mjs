@@ -15,6 +15,9 @@ test('registration PDF: team details, check-in QR, attestation and the rule book
   for (const text of [team.id, team.name, team.parish, team.forane, team.players[0].name, `Ends in ${team.players[0].idLast4}`, 'Attestation by the Parish Priest', 'Parish seal', 'FOR OFFICE USE', ruleSections[0].title, ruleSections.at(-1).title]) assert.ok(pdf.includes(text), `the PDF shows "${text}"`);
   // The QR code and the player photo (the two test photos are identical, so the PDF stores it once).
   assert.equal((pdf.match(/\/Subtype \/Image/g) || []).length, 2);
+  // Paid online, with support contacts.
+  const paid = registrationPdf(jsPDF, { team: { ...team, status: 'confirmed', payment: { amount: 500, txnRef: '412356789012', screenshot: false } }, event: { ...defaults, contacts: [{ name: 'Fr. Joseph', phone: '9876543210' }] }, qr }).output();
+  assert.ok(paid.includes('Rs. 500 paid online') && paid.includes('UTR 412356789012')); assert.ok(paid.includes('For queries: Fr. Joseph 9876543210'));
   // Without a QR code or photos (a team registered earlier) the form still has room for them.
   const plain = registrationPdf(jsPDF, { team: { ...team, forane: undefined, centreType: undefined }, event: defaults }).output();
   assert.ok(plain.includes('Check-in QR code')); assert.ok(!plain.includes('/Subtype /Image'));

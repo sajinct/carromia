@@ -242,3 +242,34 @@ a.ph-info-link:hover strong,.ph-info>a:hover strong{text-decoration:underline;te
 .checkin-players>div{display:flex;flex-direction:column;align-items:center;gap:6px}
 .checkin-players small{color:var(--muted)}
 .confirmation p small{font-size:12px}
+
+/* Payment at registration, support contacts and the public teams list */
+.payment-fields .upi-qr{display:block;margin:6px auto 12px}
+.upi-qr{width:220px;height:auto;max-width:100%;border-radius:8px;box-shadow:0 0 0 1px var(--line);background:#fff;image-rendering:pixelated}
+.upi-id{display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:8px;margin-bottom:16px}
+.upi-id code{font-size:13px;background:var(--soft);padding:6px 10px;border-radius:6px}
+.upi-setting{display:flex;align-items:flex-start;gap:16px}
+.upi-setting .upi-qr{width:140px}
+.upi-setting>div{flex:1}
+.settings-subhead{margin-top:26px;padding-top:20px;border-top:1px solid var(--line)}
+.support-card ul{list-style:none;padding:0;margin:8px 0 0;display:grid;gap:6px;font-size:12px}
+.support-card li{display:flex;flex-wrap:wrap;gap:4px 12px;align-items:baseline}
+.support-card li span{font-weight:600;min-width:110px}
+.support-card a{color:var(--green-2);text-decoration:underline;text-underline-offset:2px}
+.confirmation .support-card{text-align:left;margin:14px 0}
+.payment-ref{display:block;margin-top:5px}
+.link-button{background:none;border:0;padding:0;margin-top:4px;color:var(--green-2);text-decoration:underline;font-size:11px;cursor:pointer}
+.row-actions{display:inline-flex;gap:6px;flex-wrap:wrap}
+.payment-proof{display:block;max-width:100%;max-height:70vh;margin:0 auto;border-radius:8px}
+.teams-page{padding:40px 0 60px}
+.teams-page .search-field{margin-top:18px;max-width:420px}
+.team-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:14px;margin-top:24px}
+.team-card{background:var(--paper);border:1px solid var(--line);border-radius:var(--radius);padding:18px;display:flex;flex-direction:column;gap:8px}
+.team-card-head{display:flex;justify-content:space-between;gap:10px;align-items:baseline}
+.team-card-head span{font-size:11px;color:var(--muted);letter-spacing:1px}
+.team-card p{margin:0;font-size:13px}
+.team-card small{color:var(--muted)}
+.team-card .btn{align-self:flex-start;margin-top:6px}
+@media(max-width:580px){.upi-setting{flex-direction:column}.teams-page{padding:24px 0 40px}}
+.support-card{background:#ebefe2;padding:18px 20px;border-radius:10px;font-size:12px;margin-top:14px}
+.support-card>strong{margin-left:10px}

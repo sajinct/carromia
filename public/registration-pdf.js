@@ -75,7 +75,10 @@ export function registrationPdf(jsPDF, { team, event, qr = '', photos = [], logo
 
   // Lunch and fee.
   y += 5.5; font(8.5, 'normal');
-  text(`Lunch booked: ${team.lunch ? `${team.lunch === 2 ? 'both players' : '1 player'}` : 'none'}     |     Entry fee: ${money(event.entryFee ?? 500)} per team, paid at the tournament desk`, M, y);
+  const paid = team.payment ? `${money(team.payment.amount)} paid online${team.payment.txnRef ? ` (UTR ${team.payment.txnRef})` : ''}, confirmed` : `${money(event.entryFee ?? 500)} per team, paid at the tournament desk`;
+  text(`Lunch booked: ${team.lunch ? `${team.lunch === 2 ? 'both players' : '1 player'}` : 'none'}     |     Entry fee: ${paid}`, M, y);
+  const contacts = (event.contacts || []).map(c => `${c.name} ${c.phone}`).join('   |   ');
+  if (contacts) { y += 4.8; font(8.5, 'normal', muted); text(`For queries: ${contacts}`, M, y); }
 
   // Declaration.
   y += 7.5; y = heading('Declaration by the players', y);
@@ -84,11 +87,11 @@ export function registrationPdf(jsPDF, { team, event, qr = '', photos = [], logo
 
   // Attestation by the Parish Priest.
   y += 3; y = heading('Attestation by the Parish Priest', y) + 1;
-  const sealW = 40, attH = 35;
+  const sealW = 40, attH = contacts ? 31 : 35;
   box(M, y, W - 2 * M, attH);
   font(8.5); text(doc.splitTextToSize(`I certify that the players named above are members of ${team.parish || 'this parish / centre'}.`, W - 2 * M - sealW - 12), M + 4, y + 6);
   const lineAt = (name, ly, w = 88) => { font(8, 'normal', muted); text(name, M + 4, ly); color(ink, 'draw'); doc.setLineWidth(0.2); doc.line(M + 40, ly + 0.6, M + 40 + w, ly + 0.6); };
-  lineAt('Name of Parish Priest', y + 15.5); lineAt('Signature', y + 23.5); lineAt('Date', y + 31, 40);
+  lineAt('Name of Parish Priest', y + attH * 0.44); lineAt('Signature', y + attH * 0.67); lineAt('Date', y + attH * 0.89, 40);
   const sealX = W - M - sealW - 4; doc.setLineDashPattern([1.2, 1.2], 0); color(muted, 'draw'); doc.roundedRect(sealX, y + 3, sealW, attH - 6, 2, 2); doc.setLineDashPattern([], 0);
   font(8, 'normal', muted); text('Parish seal', sealX + sealW / 2, y + attH / 2 + 1, { align: 'center' });
   y += attH + 4;

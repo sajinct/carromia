@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { readFileSync, existsSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { seedDemo, publicState, addTeam, playerPhotos } from '../lib/tournament.mjs';
+import { seedDemo, publicState, addTeam, playerPhotos, teamForm } from '../lib/tournament.mjs';
 import { centre, player, photo } from './registration-fixture.mjs';
 const root = join(import.meta.dirname, '..');
 test('Pages build is portable to a repository subpath and contains only static assets', () => {
@@ -45,8 +45,12 @@ function fakeSupabase() {
       case '/rest/v1/rpc/register_team': {
         const main = db.rows[body.p_event ?? 'main'];
         if (main.state.demo) return reply(400, { message: 'Registration will open soon. Please check back.' });
-        try { const images = playerPhotos({ players: body.p_players }), team = addTeam(main.state, { name: body.p_name, forane: body.p_forane, parish: body.p_parish, centreType: body.p_centre_type, players: body.p_players, primaryContact: body.p_primary, lunch: body.p_lunch, adults: body.p_adults }); images.forEach((image, player) => db.photos.push({ event: body.p_event ?? 'main', team_id: team.id, player, image })); main.version++; db.pub[body.p_event ?? 'main'] = { version: main.version, state: publicState(main.state) }; return reply(200, { team }); }
+        try { const images = playerPhotos({ players: body.p_players }), team = addTeam(main.state, { name: body.p_name, forane: body.p_forane, parish: body.p_parish, centreType: body.p_centre_type, players: body.p_players, payment: body.p_payment, primaryContact: body.p_primary, lunch: body.p_lunch, adults: body.p_adults }); images.forEach((image, player) => db.photos.push({ event: body.p_event ?? 'main', team_id: team.id, player, image })); main.version++; db.pub[body.p_event ?? 'main'] = { version: main.version, state: publicState(main.state) }; return reply(200, { team }); }
         catch (error) { return reply(400, { message: error.message }); }
+      }
+      case '/rest/v1/rpc/team_form': {
+        try { const team = teamForm(db.rows[body.p_event].state, body.p_team_id, body.p_mobile); return reply(200, { team, photos: db.photos.filter(p => p.event === body.p_event && p.team_id === team.id).map(p => p.image) }); }
+        catch (error) { return /doesn’t match/.test(error.message) ? reply(200, { error: error.message }) : reply(400, { message: error.message }); }
       }
       case '/rest/v1/rpc/save_tournament': {
         if (!caller?.official) return reply(403, { message: 'Sign in as a tournament official.' });
@@ -110,6 +114,10 @@ test('live Pages runtime: public view, official sign-in, roles, conflict retry, 
   const { team } = await remoteApi('register', { name: 'Real Team', ...where, players, lunch: 1, adults });
   assert.equal(team.id, 'CAR-001'); assert.equal(team.forane, where.forane); assert.equal(team.players[0].idLast4, '1234'); assert.equal((await remoteApi('state')).teams.length, 1);
   await assert.rejects(remoteApi('photos'), /Sign in/);
+  // Anyone with the primary player's mobile number can download the team's form.
+  await assert.rejects(remoteApi('team-form', { id: team.id, mobile: '9222222222' }), /doesn’t match/);
+  const form = await remoteApi('team-form', { id: team.id, mobile: '9111111111' });
+  assert.equal(form.team.id, team.id); assert.equal(form.team.checkinToken, undefined); assert.deepEqual(form.photos, [photo, photo]);
 
   // Practice mode: a separate sample event; the real event and the public copy are untouched.
   await remoteApi('login', { email: 'omar@example.org', password: 'official-pass' });

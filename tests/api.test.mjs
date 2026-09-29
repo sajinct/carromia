@@ -52,6 +52,28 @@ test('registration is rate limited per connection', async t => {
   for (let i = 1; i <= 29; i++) assert.equal((await post('register', entry(i))).status, 201);
   assert.equal((await post('register', entry(31))).status, 429);
 });
+test('payment at registration: pending until an official confirms it; the form needs the primary mobile', async t => {
+  const { base, data, post, login } = await serve(t, 3102); const cookie = await login(), qr = photo.replace('jpeg', 'png');
+  assert.equal((await post('settings', { durationMinutes: 30, resetMinutes: 5, restMinutes: 0, registrationOpen: true, registrationDeadline: '', paymentRequired: true, upiQr: qr, contacts: [{ name: 'Fr. Joseph', phone: '9876543210' }] }, cookie)).status, 200);
+  const before = await (await fetch(`${base}/api/state`)).json(); assert.equal(before.event.upiQr, qr); assert.deepEqual(before.event.contacts, [{ name: 'Fr. Joseph', phone: '9876543210' }]);
+  assert.equal((await post('register', entry(1))).status, 400, 'a UTR or a screenshot is needed');
+  const reg = await post('register', { ...entry(1), payment: { txnRef: '412356789012', screenshot: photo } });
+  assert.equal(reg.status, 201); const { team } = await reg.json(); assert.equal(team.status, 'pending');
+  const after = await (await fetch(`${base}/api/state`)).json(); assert.equal(after.teams[0].payment, undefined, 'the UTR is not public');
+  assert.ok(existsSync(join(data, 'payments', 'CAR-001.json')));
+  assert.equal((await fetch(`${base}/api/payment-proofs`)).status, 401);
+  assert.deepEqual(await (await fetch(`${base}/api/payment-proofs`, { headers: { Cookie: cookie } })).json(), { 'CAR-001': photo });
+  const form = (id, mobile) => post('team-form', { id, mobile });
+  assert.match((await (await form('CAR-001', '9111111111')).json()).error, /still being verified/);
+  assert.equal((await post('checkin', { id: 'CAR-001' }, cookie)).status, 400, 'pending teams can’t check in');
+  assert.equal((await post('confirm-payment', { id: 'CAR-001' }, cookie)).status, 200);
+  assert.match((await (await form('CAR-001', '9222222222')).json()).error, /doesn’t match/, 'only the primary player’s number opens the form');
+  const ok = await (await form('car-001', '+91 91111 11111')).json();
+  assert.equal(ok.team.id, 'CAR-001'); assert.equal(ok.team.status, 'confirmed'); assert.equal(ok.team.players[0].idLast4, '1234'); assert.equal(ok.team.checkinToken, undefined);
+  assert.match(ok.qr, /^data:image\/png;base64,/); assert.deepEqual(ok.photos, [photo, photo]);
+  for (let i = 0; i < 7; i++) await form('CAR-001', '9000000000');
+  assert.equal((await form('CAR-001', '9111111111')).status, 429, 'wrong numbers are rate limited');
+});
 test('removing a team or starting a fresh event deletes player photos', async t => {
   const { base, data, post, login } = await serve(t, 3101); const cookie = await login();
   for (const i of [1, 2]) assert.equal((await post('register', entry(i))).status, 201);

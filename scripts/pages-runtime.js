@@ -4,7 +4,7 @@
 // Practice mode: any device opened with ?practice=1 (or switched from the desk) follows the
 // separate 'practice' event instead, so a TV, phones and the desk can rehearse the full flow
 // without touching the real event. It stays on until "Exit practice".
-import { emptyState, eligible, fail, freshEvent, publicState, practiceEvent, actions, registrationStatus, defaults, playerPhotos } from './tournament-browser.js';
+import { emptyState, eligible, fail, freshEvent, publicState, practiceEvent, actions, registrationStatus, defaults, playerPhotos, paymentProof } from './tournament-browser.js';
 import { findCentre } from './parishes.js';
 
 export const pagesMode = true;
@@ -138,6 +138,16 @@ export async function remoteApi(path, input = {}) {
   await syncClock();
   if (path === 'login') return signIn(input);
   if (path === 'change-password') return changePassword(input);
+  // A team's registration form, for whoever knows its primary player's mobile number; the database
+  // checks the number and counts wrong tries.
+  if (path === 'team-form') {
+    const reply = await request('/rest/v1/rpc/team_form', { method: 'POST', body: { p_event: eventId(), p_team_id: String(input.id ?? '').trim().toUpperCase(), p_mobile: String(input.mobile ?? '') } });
+    fail(reply.error, reply.error);
+    const { team: { checkinToken, ...team }, photos } = reply;
+    const token = encodeURIComponent(checkinToken);
+    const { qr } = await qrCode(practiceOn() ? practiceLink(`/checkin?token=${token}`) : `${siteUrl()}#/checkin?token=${token}`).catch(() => ({ qr: '' }));
+    return { team, photos: photos || [], qr };
+  }
   if (path === 'logout') { const token = readSession()?.access_token; writeSession(null); if (token) request('/auth/v1/logout', { method: 'POST', token }).catch(() => {}); return { ok: true }; }
   if (path === 'register') {
     const players = Array.isArray(input.players) ? input.players : [];
@@ -146,7 +156,8 @@ export async function remoteApi(path, input = {}) {
     fail(!centre, 'Choose your forane or zone, then your parish or centre from the list.');
     fail(input.adults !== true, 'Confirm that both players are 18 or older.');
     playerPhotos(input);
-    const body = { p_name: input.name, p_forane: centre.group, p_parish: centre.name, p_centre_type: centre.type, p_players: players, p_primary: Number(input.primaryContact) === 1 ? 1 : 0, p_event: eventId(), p_lunch: Number(input.lunch) || 0, p_adults: true };
+    const payment = { txnRef: String(input.payment?.txnRef ?? ''), screenshot: paymentProof(input) };
+    const body = { p_name: input.name, p_forane: centre.group, p_parish: centre.name, p_centre_type: centre.type, p_players: players, p_primary: Number(input.primaryContact) === 1 ? 1 : 0, p_event: eventId(), p_lunch: Number(input.lunch) || 0, p_adults: true, p_payment: payment };
     try { return await request('/rest/v1/rpc/register_team', { method: 'POST', body }); }
     catch (error) { throw error.status === 404 ? new Error('Registration is being updated. Please try again shortly.') : error; }
   }
@@ -160,6 +171,7 @@ export async function remoteApi(path, input = {}) {
     const rows = await request(`/rest/v1/player_photos?event=eq.${eventId()}&select=team_id,player,image`, { token: user.token });
     const map = {}; for (const r of rows) { map[r.team_id] ??= []; map[r.team_id][r.player] = r.image; } return map;
   }
+  if (path === 'payment-proofs') return Object.fromEntries((await request(`/rest/v1/payment_proofs?event=eq.${eventId()}&select=team_id,image`, { token: user.token })).map(r => [r.team_id, r.image]));
   if (path === 'backup') { fail(user.role !== 'admin', 'Only an event admin can download backups.'); return (await load(user)).state; }
   const action = handlers[path];
   fail(!action, 'This action is not available.');
