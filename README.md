@@ -22,7 +22,7 @@ https://sajinct.github.io/carromia/ is the live event site. The static app talks
    insert into public.officials (user_id, name, role)
    select id, 'Your Name', 'admin' from auth.users where email = 'you@example.org';
    ```
-4. **Manage officials from the app (recommended):** Dashboard → **Edge Functions** → **Deploy a new function** → **Via editor**. Name it , replace the sample code with , and deploy. Then open the function's **Details** and turn **off** *Enforce JWT verification* (the function checks the caller itself). Admins then get an **Officials** page in the desk to add officials (a temporary password is generated and shown once), change roles, reset passwords and remove accounts. It refuses anyone who is not an admin, and admins can't remove themselves or their own admin role. Steps 2–3 are only needed for your first admin.
+4. **Manage officials from the app (recommended):** Dashboard → **Edge Functions** → **Deploy a new function** → **Via editor**. Name it `officials`, replace the sample code with the contents of `supabase/functions/officials/index.ts`, and deploy. Then open the function's **Details** and turn **off** *Enforce JWT verification* (the function checks the caller itself). Admins then get an **Officials** page in the desk to add officials (a temporary password is generated and shown once), change roles, reset passwords and remove accounts. It refuses anyone who is not an admin, and admins can't remove themselves or their own admin role. Steps 2–3 are only needed for your first admin.
 5. Recommended: **Authentication → Sign In / Providers → turn off "Allow new users to sign up"**, so only accounts you create exist.
 
 ### Registration, practice mode and team removal
