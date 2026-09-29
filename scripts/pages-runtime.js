@@ -1,38 +1,125 @@
-import { seedDemo, assign, start, result, eligible, log, fail, updateSettings } from './tournament-browser.js';
+// GitHub Pages runtime: the static site talks to Supabase directly (see
+// supabase/migrations/20260929010000_carromia_live.sql). Visitors read the public copy of the
+// event; signed-in officials apply the tournament rules in the browser and save through
+// save_tournament(), which rejects stale saves so no change is ever lost.
+import { emptyState, createDraw, assign, start, result, eligible, fail, updateSettings, checkIn, unassign, freshEvent, loadSample, publicState, log } from './tournament-browser.js';
 
 export const pagesMode = true;
-const key = 'carromia-pages-demo-v2';
-function read() {
-  try { const data = JSON.parse(localStorage.getItem(key)); if (data?.version === 1 && data.demo === true) return data; } catch {}
-  return seedDemo();
+// The publishable key is meant for browsers; the database rules decide what it may do.
+const SUPABASE_URL = 'https://vzxcqpgwvknonkhjinuk.supabase.co';
+const PUBLISHABLE_KEY = 'sb_publishable_HdgK5UXMha3bvF5mk7o1Yw_eMN6h_Ro';
+const SESSION_KEY = 'carromia-official-session';
+const adminOnly = new Set(['draw', 'settings', 'demo', 'reset', 'backup']);
+let offset = 0, clockSynced = false;
+const now = () => Date.now() + offset;
+
+const readSession = () => { try { return JSON.parse(localStorage.getItem(SESSION_KEY)); } catch { return null; } };
+const writeSession = value => { try { value ? localStorage.setItem(SESSION_KEY, JSON.stringify(value)) : localStorage.removeItem(SESSION_KEY); } catch {} };
+
+async function request(path, { method = 'GET', body, token } = {}) {
+  const headers = { apikey: PUBLISHABLE_KEY, 'Content-Type': 'application/json' };
+  if (token) headers.Authorization = `Bearer ${token}`;
+  let res;
+  try { res = await fetch(SUPABASE_URL + path, { method, headers, cache: 'no-store', body: body === undefined ? undefined : JSON.stringify(body) }); }
+  catch { throw new Error('Unable to reach the tournament. Check your connection and try again.'); }
+  const text = await res.text(); let value = null;
+  try { value = text ? JSON.parse(text) : null; } catch { value = text; }
+  if (!res.ok) throw Object.assign(new Error(value?.message || value?.msg || value?.error_description || 'The tournament service is unavailable.'), { status: res.status });
+  return value;
 }
-let state = read();
-function save() { localStorage.setItem(key, JSON.stringify(state)); }
-save();
-export async function demoApi(path, input = {}) {
-  state = read();
-  if (path === 'state') return { ...structuredClone(state), isAdmin: true, localDemo: false, serverTime: Date.now(), matches: state.matches.map(m => ({ ...m, blockedReason: eligible(state, m) })) };
-  if (path === 'backup') return structuredClone(state);
-  const before = structuredClone(state);
+
+// Returns a valid access token for the signed-in official, refreshing it when close to expiry.
+async function accessToken() {
+  const session = readSession(); if (!session) return null;
+  if (session.expires_at * 1000 - 60000 > Date.now()) return session.access_token;
   try {
-    switch (path) {
-      case 'assign': assign(state, input.id, input.board); break;
-      case 'start': start(state, input.id); break;
-      case 'result': result(state, input.id, input); break;
-      case 'checkin': {
-        const team = state.teams.find(t => t.id === input.id); fail(!team, 'Team not found.');
-        fail(input.checkedIn === false && state.matches.some(m => ['called', 'playing', 'tiebreak'].includes(m.status) && [m.teamA, m.teamB].includes(team.id)), 'This team is assigned to a board.');
-        team.checkedIn = input.checkedIn !== false; log(state, `${team.name} ${team.checkedIn ? 'checked in' : 'check-in removed'}`); break;
-      }
-      case 'unassign': {
-        const m = state.matches.find(m => m.id === input.id); fail(!m || m.status !== 'called', 'Only called matches can return to the queue.');
-        m.status = 'ready'; m.board = null; log(state, `${m.id} returned to queue`); break;
-      }
-      case 'settings': updateSettings(state, input); log(state, 'Demo settings updated in this browser'); break;
-      case 'reset': fail(input.confirm !== 'RESET', 'Type RESET to reset the demo.'); state = seedDemo(); break;
-      case 'logout': return { ok: true };
-      default: throw new Error('This is a public demo. Real registration and shared event management need a hosted backend.');
-    }
-    save(); return { ok: true };
-  } catch (error) { state = before; throw error; }
+    const next = await request('/auth/v1/token?grant_type=refresh_token', { method: 'POST', body: { refresh_token: session.refresh_token } });
+    writeSession({ ...session, access_token: next.access_token, refresh_token: next.refresh_token, expires_at: next.expires_at }); return next.access_token;
+  } catch { writeSession(null); return null; }
+}
+async function official() { const token = await accessToken(); return token ? { token, ...readSession().official } : null; }
+
+async function syncClock() {
+  if (clockSynced) return;
+  const sent = Date.now(), server = await request('/rest/v1/rpc/server_time', { method: 'POST', body: {} });
+  offset = server - (sent + Date.now()) / 2; clockSynced = true;
+}
+
+async function load(user) {
+  const [row] = await request(user ? '/rest/v1/tournament?id=eq.main&select=version,state' : '/rest/v1/tournament_public?id=eq.main&select=version,state', { token: user?.token });
+  return { version: row?.version ?? 0, state: row?.state ?? emptyState() };
+}
+
+// Applies a desk action to the latest saved event and saves it; retries if someone saved first.
+async function change(user, action, input, apply) {
+  for (let attempt = 1; ; attempt++) {
+    const { version, state } = await load(user);
+    const next = apply(state) ?? state;
+    const { password, confirm, token, ...detail } = input;
+    try { await request('/rest/v1/rpc/save_tournament', { method: 'POST', token: user.token, body: { p_expected: version, p_state: next, p_public: publicState(next), p_action: action, p_detail: detail } }); return; }
+    catch (error) { if (error.status !== 409 || attempt >= 3) throw error; }
+  }
+}
+
+async function qrCode(token) {
+  const { default: QRCode } = await import('https://cdn.jsdelivr.net/npm/qrcode@1.5.4/+esm');
+  const url = `${location.origin}${location.pathname}#/checkin?token=${encodeURIComponent(token)}`;
+  return { qr: await QRCode.toDataURL(url, { width: 240, margin: 2, color: { dark: '#172d2c', light: '#ffffff' } }) };
+}
+
+async function signIn(input) {
+  const email = String(input.email || '').trim().toLowerCase();
+  let session;
+  try { session = await request('/auth/v1/token?grant_type=password', { method: 'POST', body: { email, password: String(input.password || '') } }); }
+  catch (error) { throw new Error(error.status === 400 ? 'Incorrect email or password.' : error.message); }
+  const [profile] = await request(`/rest/v1/officials?user_id=eq.${encodeURIComponent(session.user.id)}&select=name,role`, { token: session.access_token });
+  fail(!profile, 'This account is not a tournament official.');
+  writeSession({ access_token: session.access_token, refresh_token: session.refresh_token, expires_at: session.expires_at, official: profile });
+  return { ok: true };
+}
+
+export async function remoteApi(path, input = {}) {
+  if (path.startsWith('qr?')) return qrCode(new URLSearchParams(path.slice(3)).get('token'));
+  await syncClock();
+  if (path === 'login') return signIn(input);
+  if (path === 'logout') { const token = readSession()?.access_token; writeSession(null); if (token) request('/auth/v1/logout', { method: 'POST', token }).catch(() => {}); return { ok: true }; }
+  if (path === 'register') {
+    const players = Array.isArray(input.players) ? input.players : [];
+    return request('/rest/v1/rpc/register_team', { method: 'POST', body: { p_name: input.name, p_parish: input.parish, p_players: players, p_primary: Number(input.primaryContact) === 1 ? 1 : 0 } });
+  }
+
+  const user = await official();
+  if (path === 'state') {
+    const { state } = await load(user);
+    const teams = user ? state.teams.map(({ checkinToken, ...t }) => t) : state.teams;
+    return { ...state, teams, activity: user ? state.activity : [], matches: state.matches.map(m => ({ ...m, blockedReason: eligible(state, m, now()) })), isAdmin: Boolean(user), user: user && { name: user.name, role: user.role }, authMode: 'supabase', localDemo: false, serverTime: now() };
+  }
+  fail(!user, 'Sign in to the tournament desk first.');
+  fail(adminOnly.has(path) && user.role !== 'admin', 'Only an event admin can do this.');
+  if (path === 'backup') return (await load(user)).state;
+  const actions = {
+    checkin: state => checkIn(state, input),
+    draw: state => createDraw(state),
+    assign: state => assign(state, input.id, input.board, now()),
+    start: state => start(state, input.id, now()),
+    result: state => { result(state, input.id, input, now()); const m = state.matches.find(m => m.id === input.id); if (m.status === 'completed') m.official = user.name; },
+    unassign: state => unassign(state, input.id),
+    settings: state => { updateSettings(state, input); log(state, 'Event settings updated'); },
+    demo: state => loadSample(state),
+    reset: state => freshEvent(state, input.confirm)
+  };
+  fail(!actions[path], 'This action is not available.');
+  await change(user, path, input, actions[path]);
+  return { ok: true };
+}
+
+// Calls onChange whenever the saved event changes (a cheap version check every few seconds).
+export function watch(onChange) {
+  let known = null;
+  const check = async () => {
+    if (document.hidden) return;
+    try { const [row] = await request('/rest/v1/tournament_public?id=eq.main&select=version'); const version = row?.version ?? 0; if (known !== null && version !== known) onChange(); known = version; } catch {}
+  };
+  check(); setInterval(check, 4000);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) check(); });
 }

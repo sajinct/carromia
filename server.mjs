@@ -4,7 +4,7 @@ import { join, extname } from 'node:path';
 import { randomBytes, timingSafeEqual } from 'node:crypto';
 import QRCode from 'qrcode';
 import { fileStore, supabaseStore, ConflictError } from './lib/store.mjs';
-import { emptyState, addTeam, createDraw, assign, start, result, seedDemo, eligible, log, fail, updateSettings } from './lib/tournament.mjs';
+import { emptyState, addTeam, createDraw, assign, start, result, eligible, log, fail, updateSettings, checkIn, unassign, freshEvent, loadSample } from './lib/tournament.mjs';
 
 const port = Number(process.env.PORT || 3000);
 const host = process.env.HOST || '127.0.0.1';
@@ -86,15 +86,15 @@ const server = http.createServer(async (req, res) => {
       if (adminOnly.has(url.pathname) && user.role !== 'admin') return send(res, 403, { error: 'Only an event admin can do this.' });
       await change(() => {
         switch (url.pathname) {
-          case '/api/checkin': { const team = state.teams.find(t => input.token ? t.checkinToken === input.token : t.id === input.id); fail(!team, 'Team not found. Check the QR code or team ID.'); fail(state.matches.some(m => ['called', 'playing', 'tiebreak'].includes(m.status) && [m.teamA, m.teamB].includes(team.id)) && input.checkedIn === false, 'This team is assigned to a board.'); team.checkedIn = input.checkedIn !== false; log(state, `${team.name} ${team.checkedIn ? 'checked in' : 'check-in removed'}`); break; }
+          case '/api/checkin': checkIn(state, input); break;
           case '/api/draw': createDraw(state); break;
           case '/api/assign': assign(state, input.id, input.board); break;
           case '/api/start': start(state, input.id); break;
           case '/api/result': { result(state, input.id, input); const m = state.matches.find(m => m.id === input.id); if (m.status === 'completed') m.official = user.name; break; }
-          case '/api/unassign': { const m = state.matches.find(m => m.id === input.id); fail(!m || m.status !== 'called', 'Only a called match can be returned to the queue.'); m.status = 'ready'; m.board = null; log(state, `${m.id} returned to queue`); break; }
+          case '/api/unassign': unassign(state, input.id); break;
           case '/api/settings': updateSettings(state, input); log(state, 'Event settings updated'); break;
-          case '/api/demo': fail(state.teams.length > 0, 'Start a fresh event before loading sample teams.'); { const event = state.event; state = seedDemo(); state.event = { ...event, registrationOpen: false }; break; }
-          case '/api/reset': fail(input.confirm !== 'RESET', 'Type RESET to start a fresh event.'); state = { ...emptyState(), event: { ...state.event, registrationOpen: true } }; break;
+          case '/api/demo': state = loadSample(state); break;
+          case '/api/reset': state = freshEvent(state, input.confirm); break;
           default: throw Object.assign(new Error('Endpoint not found.'), { status: 404 });
         }
       });

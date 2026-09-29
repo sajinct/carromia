@@ -1,17 +1,41 @@
 # CARROMIA 2026
 
-A responsive tournament website and installable web app for a four-board, two-player-team carrom event.
+A responsive tournament website and installable web app for CARROMIA 2026, the four-board, two-player-team carrom tournament presented by Pithruvedhi of Mary Matha Church, Vijayanagar.
 
-## GitHub Pages
+## Live site (GitHub Pages + Supabase)
 
-The public GitHub Pages deployment is an **interactive demo** with fictional teams. It runs entirely in the browser, stores sample changes in local storage, and does not accept real registrations or synchronize event data between devices. No desk password is required for this demo. The local Node application below retains its server-backed registration and protected desk.
+https://sajinct.github.io/carromia/ is the live event site. The static app talks to Supabase directly: every visitor sees the same boards and bracket, updated within a few seconds, and officials run the desk from any phone or laptop.
+
+- **Visitors** read `tournament_public`, a copy without mobile numbers, check-in tokens or desk activity.
+- **Officials** sign in with their Supabase email and password. Their browser applies the tournament rules and saves through `save_tournament()`, which checks they are an official, rejects a save if someone else saved first (the app reloads and retries automatically), updates both copies together and writes the audit log.
+- **Registration** goes through `register_team()`, which enforces the same rules as the app. It stays closed while the sample tournament is loaded.
+
+### One-time setup
+
+1. In the Supabase dashboard open **SQL Editor** and run, in order:
+   `supabase/migrations/20260929000000_carromia_init.sql`, then `supabase/migrations/20260929010000_carromia_live.sql`.
+   The second file also loads the 16-team sample tournament (it never overwrites an existing event, and is safe to re-run).
+2. **Authentication → Users → Add user**: create an account for each official (tick *Auto confirm*).
+3. Make them officials in the SQL Editor (`admin` can change settings, create the draw and clear data; `official` runs check-in, boards and results):
+
+   ```sql
+   insert into public.officials (user_id, name, role)
+   select id, 'Your Name', 'admin' from auth.users where email = 'you@example.org';
+   ```
+4. Recommended: **Authentication → Sign In / Providers → turn off "Allow new users to sign up"**, so only accounts you create exist.
+
+### Before the real event: clear the sample data
+
+Sign in as an admin → **Settings → Start a fresh event** → **Download backup** (optional) → type `RESET`. This removes the sample teams, matches and results, keeps the event details (date, time, venue, timings) and reopens registration.
+
+### Preview the build locally
 
 ```powershell
 npm run build:pages
 node scripts/preview-pages.mjs
 ```
 
-Preview at http://localhost:3001/carromia/. Hash routes (for example `#/admin` and `#/live`) support direct links and reloads on GitHub Pages. The GitHub Actions workflow tests and publishes the site on pushes to `main`. The build copies only public assets and the demo engine; local tournament data, passwords, and dependencies are excluded. Real public tournament use requires a hosted backend.
+Preview at http://localhost:3001/carromia/ (it uses the live Supabase data). Hash routes such as `#/admin` and `#/live` support direct links and reloads. The GitHub Actions workflow tests and publishes the site on every push to `main`. If the database layout changes, edit `scripts/write-live-migration.mjs` and run it to regenerate the migration.
 
 ## Run locally
 

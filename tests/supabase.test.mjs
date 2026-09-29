@@ -6,7 +6,7 @@ import { join } from 'node:path';
 
 // A minimal stand-in for the Supabase REST and Auth endpoints the server uses.
 function mockSupabase() {
-  const db = { row: null, audit: [], badKeyHeaders: 0 };
+  const db = { row: null, public: null, audit: [], badKeyHeaders: 0 };
   const users = { 'asha@example.org': { id: 'u1', password: 'admin-pass' }, 'omar@example.org': { id: 'u2', password: 'official-pass' }, 'guest@example.org': { id: 'u3', password: 'guest-pass' } };
   const officials = { u1: { name: 'Asha Admin', role: 'admin' }, u2: { name: 'Omar Official', role: 'official' } };
   const server = http.createServer(async (req, res) => {
@@ -14,10 +14,10 @@ function mockSupabase() {
     const body = text ? JSON.parse(text) : null, url = new URL(req.url, 'http://x'), q = k => url.searchParams.get(k)?.replace(/^eq\./, '');
     if (req.headers.apikey !== 'sb_secret_test' || req.headers.authorization) db.badKeyHeaders++;
     const reply = (status, value) => { res.writeHead(status, { 'Content-Type': 'application/json' }); res.end(value === undefined ? '' : JSON.stringify(value)); };
-    if (url.pathname === '/rest/v1/tournament') {
-      if (req.method === 'GET') return reply(200, db.row ? [structuredClone(db.row)] : []);
-      if (req.method === 'POST') { if (db.row) return reply(409, { message: 'duplicate key' }); db.row = { version: body.version, state: body.state }; return reply(201); }
-      if (req.method === 'PATCH') { if (!db.row || db.row.version !== Number(q('version'))) return reply(200, []); db.row = { version: body.version, state: body.state }; return reply(200, [{ version: body.version }]); }
+    if (url.pathname === '/rest/v1/tournament' && req.method === 'GET') return reply(200, db.row ? [structuredClone(db.row)] : []);
+    if (url.pathname === '/rest/v1/rpc/save_tournament') {
+      const current = db.row?.version ?? 0; if (body.p_expected !== current) return reply(409, { message: 'The event was changed from another session. Please try again.' });
+      db.row = { version: current + 1, state: body.p_state }; db.public = body.p_public; return reply(200, db.row.version);
     }
     if (url.pathname === '/rest/v1/audit_log' && req.method === 'POST') { db.audit.push(body); return reply(201); }
     if (url.pathname === '/rest/v1/officials') return reply(200, officials[q('user_id')] ? [officials[q('user_id')]] : []);
@@ -65,5 +65,6 @@ test('Supabase mode: named officials, roles, audit trail, and conflict-safe save
   const actions = db.audit.map(a => `${a.actor_name}:${a.action}`);
   assert.ok(actions.includes('Public registration:register')); assert.ok(actions.includes('Omar Official:checkin')); assert.ok(actions.includes('Asha Admin:draw')); assert.ok(actions.includes('Omar Official:assign'));
   assert.ok(!JSON.stringify(db.audit).includes('pass'), 'passwords never reach the audit log');
+  assert.equal(db.public.teams.length, 4); assert.ok(!JSON.stringify(db.public).includes('9111111111'), 'the public copy has no mobile numbers'); assert.ok(!JSON.stringify(db.public).includes('checkinToken'));
   assert.equal(db.badKeyHeaders, 0, 'sb_secret keys are sent only in the apikey header');
 });
