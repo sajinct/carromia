@@ -2,6 +2,8 @@
 
 A responsive tournament website and installable web app for CARROMIA 2026, the four-board, two-player-team carrom tournament presented by Pithruvedhi of Mary Matha Church, Vijayanagar.
 
+**User manual** for the tournament desk team (roles, permissions and every screen, with screenshots): [docs/user-manual.md](docs/user-manual.md), or the printable [PDF](docs/user-manual.pdf).
+
 ## Live site (GitHub Pages + Supabase)
 
 https://sajinct.github.io/carromia/ is the live event site. The static app talks to Supabase directly: every visitor sees the same boards and bracket, updated within a second or two over Supabase Realtime, and officials run the desk from any phone or laptop.
