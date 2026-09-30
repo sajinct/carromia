@@ -30,10 +30,12 @@ export function registrationPdf(jsPDF, { team, event, qr = '', photos = [], logo
   color(green, 'fill'); doc.rect(0, 0, W, 36, 'F');
   logos.slice(0, 2).forEach((logo, i) => { const x = i ? W - M - 18 : M; color([255, 255, 255], 'fill'); doc.circle(x + 9, 18, 9.5, 'F'); fit(logo, x + 1.5, 10.5, 15, 15); });
   const mid = W / 2;
-  font(7, 'bold', lime); text('PITHRUVEDHI OF MMC PRESENTS', mid, 11, { align: 'center', charSpace: 0.8 });
-  font(22, 'bold', [255, 255, 255]); text(`${event.name || 'CARROMIA'} ${event.year || ''}`.trim(), mid, 21, { align: 'center', charSpace: 1 });
+  // jsPDF centres text without its letter spacing, which pushes spaced text to the right; centre it here.
+  const spaced = (value, y, charSpace) => text(value, mid - (doc.getTextWidth(value) + charSpace * (value.length - 1)) / 2, y, { charSpace });
+  font(7, 'bold', lime); spaced('PITHRUVEDHI OF MMC PRESENTS', 11, 0.8);
+  font(22, 'bold', [255, 255, 255]); spaced(`${event.name || 'CARROMIA'} ${event.year || ''}`.trim(), 21, 1);
   font(8.5, 'normal', lime); text('Diocesan Carrom Tournament  |  Diocese of Mandya', mid, 27.5, { align: 'center' });
-  font(7.5, 'bold', [255, 255, 255]); text('TEAM REGISTRATION FORM', mid, 32.5, { align: 'center', charSpace: 0.8 });
+  font(7.5, 'bold', [255, 255, 255]); spaced('TEAM REGISTRATION FORM', 32.5, 0.8);
 
   let y = 43;
   font(8.5, 'normal', muted);
@@ -98,7 +100,12 @@ export function registrationPdf(jsPDF, { team, event, qr = '', photos = [], logo
 
   // For office use.
   box(M, y, W - 2 * M, 11, soft); font(7, 'bold', muted); text('FOR OFFICE USE', M + 3, y + 6.8);
-  [['Checked in', 45], ['Fee received', 77], ['ID verified', 111]].forEach(([name, x]) => { box(M + x, y + 3.3, 4, 4); font(8); text(name, M + x + 6, y + 6.8); });
+  // A fee paid online and confirmed by an official is already received, so its box comes ticked.
+  const feeConfirmed = Boolean(team.payment) && team.status !== 'pending';
+  [['Checked in', 45], ['Fee received', 77, feeConfirmed], ['ID verified', 111]].forEach(([name, x, ticked]) => {
+    box(M + x, y + 3.3, 4, 4); font(8); text(name, M + x + 6, y + 6.8);
+    if (ticked) { color(green, 'draw'); doc.setLineWidth(0.6); doc.lines([[1.1, 1.2], [2.3, -3]], M + x + 0.8, y + 5.4); }
+  });
   font(8); text('Official', M + 142, y + 6.8); color(ink, 'draw'); doc.line(M + 155, y + 7.3, W - M - 3, y + 7.3);
 
   // Rule book.
