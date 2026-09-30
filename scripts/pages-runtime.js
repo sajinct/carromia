@@ -233,9 +233,11 @@ export async function remoteApi(path, input = {}) {
 // Calls onChange whenever the followed event changes. The database announces each change on a
 // Realtime channel (supabase/migrations/20261008000000_carromia_realtime.sql), so a screen fetches
 // the event only when something happened. A cheap version check every 10 seconds stands in while
-// that connection is down, and until the channel has announced a change at all (so a database
-// without the migration still updates). A practice screen also hears when an admin turns practice
-// off, which sends it back to the real event. Hidden tabs let go of their connection.
+// that connection is down, and until the database is known to announce changes: on joining, the
+// screen asks tournament_versions() (20261009000000_carromia_realtime_versions.sql), which says so,
+// and an announcement proves it too. A database without those migrations keeps being checked.
+// A practice screen also hears when an admin turns practice off, which sends it back to the real
+// event. Hidden tabs let go of their connection.
 export function watch(onChange, { WebSocketImpl = globalThis.WebSocket, every = 10000 } = {}) {
   let known = null, socket = null, retry = 1000, trusted = false;
   const seen = (id, version, practiceOff) => {
@@ -243,10 +245,19 @@ export function watch(onChange, { WebSocketImpl = globalThis.WebSocket, every = 
     known = key;
     if (changed || (id === 'practice' && practiceOff)) onChange();
   };
-  const check = async () => {
+  // The followed event's version and the real event's practiceOff, with announced: true when the
+  // database announces changes (only asked just after joining the channel).
+  const versions = async (id, joined) => {
+    if (joined) {
+      try { return await request('/rest/v1/rpc/tournament_versions', { method: 'POST', body: { p_ids: [...new Set(['main', id])] } }); } catch {}
+    }
+    return request(`/rest/v1/tournament_public?id=in.(main,${id})&select=id,version,practiceOff:state->event->practiceOff`);
+  };
+  const check = async (joined = false) => {
     if (document.hidden) return;
     try {
-      const id = eventId(), rows = await request(`/rest/v1/tournament_public?id=in.(main,${id})&select=id,version,practiceOff:state->event->practiceOff`);
+      const id = eventId(), rows = await versions(id, joined);
+      if (rows.some(r => r.announced === true)) trusted = true;
       seen(id, rows.find(r => r.id === id)?.version ?? 0, rows.find(r => r.id === 'main')?.practiceOff === true);
     } catch {}
   };
@@ -268,7 +279,7 @@ export function watch(onChange, { WebSocketImpl = globalThis.WebSocket, every = 
       if (event === 'phx_reply' && payload?.status !== 'ok') ws.close();
       else if (event === 'phx_error' || event === 'phx_close') ws.close();
       // Once joined, catch up on anything that changed while connecting.
-      else if (event === 'phx_reply' && topic === `realtime:tournament:${id}` && !ws.live) { ws.live = true; retry = 1000; check(); }
+      else if (event === 'phx_reply' && topic === `realtime:tournament:${id}` && !ws.live) { ws.live = true; retry = 1000; check(true); }
       else if (event === 'broadcast' && payload?.event === 'changed') announced(topic, payload.payload ?? {});
     };
     const announced = (topic, { version, practiceOff }) => {
