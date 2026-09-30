@@ -22,3 +22,17 @@ test('registration PDF: team details, check-in QR, attestation and the rule book
   const plain = registrationPdf(jsPDF, { team: { ...team, forane: undefined, centreType: undefined }, event: defaults }).output();
   assert.ok(plain.includes('Check-in QR code')); assert.ok(!plain.includes('/Subtype /Image'));
 });
+test('registration PDF: tear-off lunch coupons with the lunch-counter QR code, when the event has them on', async () => {
+  const team = { ...seedDemo().teams[0], lunch: 2 }, qr = await QRCode.toDataURL('https://example.org/checkin?token=abc'), lunchQr = await QRCode.toDataURL('https://example.org/lunch?token=abc');
+  const event = { ...defaults, lunchCoupons: true, contacts: [{ name: 'Fr. Joseph', phone: '9876543210' }] };
+  const doc = registrationPdf(jsPDF, { team, event, qr, lunchQr, photos: [photo, photo] }), pdf = doc.output();
+  for (const text of ['LUNCH COUPON', '1 of 2', '2 of 2', `${team.id}-L1`, `${team.id}-L2`, 'Scan at the lunch counter', 'CUT ALONG THE DOTTED LINE', 'FOR OFFICE USE', 'Parish seal']) assert.ok(pdf.includes(text), `the PDF shows "${text}"`);
+  assert.equal((pdf.match(/\/Subtype \/Image/g) || []).length, 3, 'check-in QR, lunch QR (stored once) and photo');
+  assert.ok(doc.carromia.formBottom <= doc.carromia.stripTop - 3, 'the form ends above the coupons');
+  const one = registrationPdf(jsPDF, { team: { ...team, lunch: 1 }, event, lunchQr }).output();
+  assert.ok(one.includes('1 of 1') && !one.includes(`${team.id}-L2`));
+  for (const [what, t, e] of [['no lunch booked', { ...team, lunch: 0 }, event], ['coupons turned off', team, defaults]]) {
+    const off = registrationPdf(jsPDF, { team: t, event: e, qr, lunchQr });
+    assert.ok(!off.output().includes('LUNCH COUPON'), what); assert.equal(off.carromia.stripTop, null, what);
+  }
+});

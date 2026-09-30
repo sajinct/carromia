@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { emptyState, addTeam, createDraw, assign, start, roundWinner, nextRound, undoRound, eligible, updateSettings, boardReady, removeTeam, practiceEvent, publicState, walkover, undoWalkover, correctResult, unassign, actions, practiceMode, registrationStatus, parishKey, playerPhotos, upiQrImage, seedDemo, paymentProof, confirmPayment, checkIn, isConfirmed } from '../lib/tournament.mjs';
+import { emptyState, addTeam, serveLunch, createDraw, assign, start, roundWinner, nextRound, undoRound, eligible, updateSettings, boardReady, removeTeam, practiceEvent, publicState, walkover, undoWalkover, correctResult, unassign, actions, practiceMode, registrationStatus, parishKey, playerPhotos, upiQrImage, seedDemo, paymentProof, confirmPayment, checkIn, isConfirmed } from '../lib/tournament.mjs';
 import { centres, groups, findCentre } from '../public/parishes.js';
 import { centre, player, photo } from './registration-fixture.mjs';
 // A team from the i-th parish or centre of the diocese register.
@@ -86,6 +86,22 @@ test('payment at registration: pending until the desk confirms; pending teams ca
   createDraw(s, false); const drawn = s.matches.flatMap(m => [m.teamA, m.teamB]);
   assert.ok(drawn.includes(a.id) && drawn.includes(c.id) && !drawn.includes(b.id)); assert.ok(s.activity.some(x => /1 team awaiting payment left out/.test(x.message)));
   assert.equal(isConfirmed({ id: 'CAR-009' }), true, 'teams saved before payments existed count as confirmed');
+});
+test('lunch coupons: off by default; the counter serves each booked lunch once, and a serve can be undone', () => {
+  const s = open(), t = addTeam(s, { ...entry('Hungry'), lunch: 2 }), none = addTeam(s, entry('Fed', 1));
+  assert.equal(s.event.lunchCoupons, false);
+  assert.throws(() => serveLunch(s, { token: t.checkinToken }), /turned off/);
+  updateSettings(s, { resetMinutes: 5, restMinutes: 0, registrationOpen: true, lunchCoupons: true }); assert.equal(s.event.lunchCoupons, true);
+  assert.throws(() => serveLunch(s, { token: 'nope' }), /Team not found/);
+  assert.throws(() => serveLunch(s, { id: none.id }), /No lunch was booked/);
+  serveLunch(s, { token: t.checkinToken }, 1000); assert.deepEqual([t.lunchServed, t.lunchServedAt], [1, 1000]); assert.match(s.activity[0].message, /Hungry: lunch 1 of 2 served/);
+  assert.throws(() => serveLunch(s, { id: t.id, count: 2 }), /Only 1 lunch is left/);
+  serveLunch(s, { id: t.id }); assert.throws(() => serveLunch(s, { token: t.checkinToken }), /already been served/);
+  serveLunch(s, { id: t.id, undo: true }); assert.equal(t.lunchServed, 1);
+  serveLunch(s, { id: t.id, undo: true }); assert.throws(() => serveLunch(s, { id: t.id, undo: true }), /No lunch has been served/);
+  serveLunch(s, { id: t.id, count: 2 }); assert.equal(t.lunchServed, 2);
+  s.event.paymentRequired = true; s.event.upiQr = 'x'; const p = addTeam(s, { ...entry('Unpaid', 2), lunch: 1, payment: { txnRef: '412356789012' } });
+  assert.throws(() => serveLunch(s, { id: p.id }), /hasn’t been confirmed/);
 });
 test('registration limits: team slots, teams per parish, deadline and lunch booking', () => {
   const s = emptyState(), before = Date.parse('2026-11-10T18:29:00Z'), after = Date.parse('2026-11-10T18:30:00Z');
@@ -242,7 +258,7 @@ test('a recorded score can be corrected round by round until the next round is c
   assert.throws(() => correctResult(s, 'M99', {}), /Only a played/);
 });
 test('the action registry names every desk action and flags the admin-only ones', () => {
-  assert.deepEqual(Object.keys(actions).sort(), ['assign', 'board-ready', 'checkin', 'confirm-payment', 'correct-result', 'demo', 'draw', 'next-round', 'practice-mode', 'remove-team', 'reset', 'round-winner', 'settings', 'start', 'unassign', 'undo-round', 'undo-walkover', 'walkover']);
+  assert.deepEqual(Object.keys(actions).sort(), ['assign', 'board-ready', 'checkin', 'confirm-payment', 'correct-result', 'demo', 'draw', 'next-round', 'practice-mode', 'remove-team', 'reset', 'round-winner', 'serve-lunch', 'settings', 'start', 'unassign', 'undo-round', 'undo-walkover', 'walkover']);
   assert.deepEqual(Object.entries(actions).filter(([, a]) => a.admin).map(([k]) => k).sort(), ['correct-result', 'demo', 'draw', 'practice-mode', 'remove-team', 'reset', 'settings', 'undo-walkover', 'walkover']);
   const s = setup(2); actions.draw.run(s, {}, {}); actions.assign.run(s, { id: 'M01', board: 1 }, { now: 0 }); actions.start.run(s, { id: 'M01' }, { now: 0 });
   const m = s.matches[0]; actions['round-winner'].run(s, { id: 'M01', winner: m.teamA }, { now: 60000, official: 'Asha Admin' }); actions['undo-round'].run(s, { id: 'M01' }, { now: 70000 });

@@ -117,6 +117,7 @@ test('live Pages runtime: public view, official sign-in, roles, conflict retry, 
   assert.equal(db.rows.main.state.matches.find(m => m.id === 'M05').status, 'playing');
   assert.equal(db.public.state.matches.find(m => m.id === 'M05').status, 'playing'); assert.ok(!JSON.stringify(db.public).includes('9000000000'), 'public copy has no mobiles');
   await assert.rejects(remoteApi('reset', { confirm: 'RESET' }), /Only an event admin/);
+  await assert.rejects(remoteApi('serve-lunch', { id: 'CAR-002' }), /Lunch coupons are turned off/);
   db.raceOnce = true; await remoteApi('checkin', { id: 'CAR-001', checkedIn: true });
   assert.equal(db.rows.main.state.event.venue, 'Changed elsewhere', 'the retry builds on the other official’s save');
 
@@ -146,7 +147,7 @@ test('live Pages runtime: public view, official sign-in, roles, conflict retry, 
   // Anyone with the primary player's mobile number can download the team's form.
   await assert.rejects(remoteApi('team-form', { id: team.id, mobile: '9222222222' }), /doesn’t match/);
   const form = await remoteApi('team-form', { id: team.id, mobile: '9111111111' });
-  assert.equal(form.team.id, team.id); assert.equal(form.team.checkinToken, undefined);
+  assert.equal(form.team.id, team.id); assert.equal(form.team.checkinToken, undefined); assert.equal(typeof form.lunchQr, 'string', 'a team with lunch gets its lunch coupon QR code');
   const [photo1, photo2] = db.photos.filter(p => p.team_id === team.id).map(p => p.path);
   assert.deepEqual(form.photos, [photo1, photo2].map(p => `${SUPABASE}/storage/v1/object/sign/team-files/${thumbPath(p)}?token=signed`), 'the form gets short-lived links to the thumbnails');
   // Each photo and its thumbnail are files; the database holds only their paths.

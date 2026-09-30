@@ -240,6 +240,8 @@ a.ph-info-link:hover strong,.ph-info>a:hover strong{text-decoration:underline;te
 .checkin-players{display:flex;justify-content:center;gap:28px;flex-wrap:wrap;margin:6px 0 14px}
 .checkin-players>div{display:flex;flex-direction:column;align-items:center;gap:6px}
 .checkin-players small{color:var(--muted)}
+.lunch-count{font-size:15px;margin:4px 0 14px}.lunch-count strong{font-size:22px;color:var(--green)}
+.lunch-actions{display:flex;justify-content:center;gap:10px;flex-wrap:wrap}
 .confirmation p small{font-size:12px}
 
 /* Payment at registration, support contacts and the public teams list */

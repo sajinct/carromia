@@ -55,6 +55,13 @@ test('API protects the desk, persists registration, produces QR, and omits priva
   assert.equal((await post('change-password', { current: 'test-password', password: 'another-password' }, cookie)).status, 400, 'the shared desk password is not changed from the app');
   assert.equal((await fetch(`${base}/api/backup`)).status, 401);
   const backup = await (await fetch(`${base}/api/backup`, { headers: { Cookie: cookie } })).json(); assert.equal(backup.teams[0].checkinToken, team.checkinToken);
+  // Lunch coupons: their QR code opens the lunch counter, which serves each booked lunch once.
+  const lunchQr = await (await fetch(`${base}/api/qr?token=${team.checkinToken}&for=lunch`)).json(); assert.match(lunchQr.qr, /^data:image\/png;base64,/); assert.notEqual(lunchQr.qr, qr.qr);
+  assert.equal((await post('serve-lunch', { token: team.checkinToken }, cookie)).status, 400, 'lunch coupons are off by default');
+  assert.equal((await post('settings', { gamesPerMatch: 3, gameMinutes: 10, resetMinutes: 5, restMinutes: 0, registrationOpen: true, registrationDeadline: '', lunchCoupons: true }, cookie)).status, 200);
+  assert.equal((await post('serve-lunch', { token: team.checkinToken })).status, 401);
+  assert.equal((await post('serve-lunch', { token: team.checkinToken }, cookie)).status, 200);
+  const served = await (await fetch(`${base}/api/state`, { headers: { Cookie: cookie } })).json(); assert.equal(served.event.lunchCoupons, true); assert.equal(served.teams[0].lunchServed, 1);
 });
 test('registration is rate limited per connection', async t => {
   const { post } = await serve(t, 3098);
@@ -87,7 +94,7 @@ test('payment at registration: pending until an official confirms it; the form n
   assert.match((await (await form('CAR-001', '9222222222')).json()).error, /doesn’t match/, 'only the primary player’s number opens the form');
   const ok = await (await form('car-001', '+91 91111 11111')).json();
   assert.equal(ok.team.id, 'CAR-001'); assert.equal(ok.team.status, 'confirmed'); assert.equal(ok.team.players[0].idLast4, '1234'); assert.equal(ok.team.checkinToken, undefined);
-  assert.match(ok.qr, /^data:image\/png;base64,/); assert.deepEqual(ok.photos, [photo, photo]);
+  assert.match(ok.qr, /^data:image\/png;base64,/); assert.deepEqual(ok.photos, [photo, photo]); assert.equal(ok.lunchQr, '', 'no lunch booked, so no lunch coupon QR code');
   for (let i = 0; i < 7; i++) await form('CAR-001', '9000000000');
   assert.equal((await form('CAR-001', '9111111111')).status, 429, 'wrong numbers are rate limited');
 });

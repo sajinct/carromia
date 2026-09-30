@@ -101,6 +101,8 @@ async function qrCode(url, width = 240) {
   const { default: QRCode } = await import('https://cdn.jsdelivr.net/npm/qrcode@1.5.4/+esm');
   return { qr: await QRCode.toDataURL(url, { width, margin: 2, color: { dark: '#172d2c', light: '#ffffff' } }) };
 }
+// A team's check-in or lunch-counter page, from its QR code.
+function teamLink(token, route) { const link = `${route}?token=${encodeURIComponent(token)}`; return practiceOn() ? practiceLink(link) : `${siteUrl()}#${link}`; }
 // A public page's link for this device's event: a practice screen points phones to practice.
 export function shareLink(route) {
   fail(!shareRoutes.includes(route), 'Page not found.');
@@ -153,8 +155,8 @@ async function manageOfficials(user, action, input) {
 }
 
 export async function remoteApi(path, input = {}) {
-  // Check-in QR codes keep the device in the same event (a practice QR opens practice mode).
-  if (path.startsWith('qr?')) { const token = encodeURIComponent(new URLSearchParams(path.slice(3)).get('token')); return qrCode(practiceOn() ? practiceLink(`/checkin?token=${token}`) : `${siteUrl()}#/checkin?token=${token}`); }
+  // Check-in and lunch-coupon QR codes keep the device in the same event (a practice QR opens practice mode).
+  if (path.startsWith('qr?')) { const query = new URLSearchParams(path.slice(3)); return qrCode(teamLink(query.get('token'), query.get('for') === 'lunch' ? '/lunch' : '/checkin')); }
   if (path.startsWith('practice-qr?')) return qrCode(practiceLink(new URLSearchParams(path.slice(12)).get('route')));
   if (path.startsWith('link-qr?')) { const url = shareLink(new URLSearchParams(path.slice(8)).get('route')); return { url, ...await qrCode(url, 320) }; }
   if (path === 'practice') { fail(input.on === true && await practiceOff(), 'Practice mode is turned off by the event admin.'); setPractice(input.on === true); return { ok: true }; }
@@ -167,9 +169,8 @@ export async function remoteApi(path, input = {}) {
     const reply = await registration({ action: 'team-form', event: eventId(), id: String(input.id ?? '').trim().toUpperCase(), mobile: String(input.mobile ?? '') });
     fail(reply.error, reply.error);
     const { team: { checkinToken, ...team }, photos } = reply;
-    const token = encodeURIComponent(checkinToken);
-    const { qr } = await qrCode(practiceOn() ? practiceLink(`/checkin?token=${token}`) : `${siteUrl()}#/checkin?token=${token}`).catch(() => ({ qr: '' }));
-    return { team, photos: photos || [], qr };
+    const [{ qr }, { qr: lunchQr }] = await Promise.all([qrCode(teamLink(checkinToken, '/checkin')), team.lunch ? qrCode(teamLink(checkinToken, '/lunch')) : { qr: '' }].map(p => Promise.resolve(p).catch(() => ({ qr: '' }))));
+    return { team, photos: photos || [], qr, lunchQr };
   }
   if (path === 'logout') { const token = readSession()?.access_token; writeSession(null); if (token) request('/auth/v1/logout', { method: 'POST', token }).catch(() => {}); return { ok: true }; }
   if (path === 'register') {

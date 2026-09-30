@@ -45,6 +45,8 @@ function view(user) {
   return { ...state, event: { ...defaults, ...state.event }, teams: isAdmin ? state.teams : state.teams.map(publicTeam), activity: isAdmin ? state.activity : [], matches: state.matches.map(m => ({ ...m, blockedReason: eligible(state, m) })), registration: registrationStatus(state), isAdmin, user: user && { name: user.name, role: user.role }, authMode: supabase ? 'supabase' : 'password', localDemo: !supabase && !process.env.ADMIN_PASSWORD, serverTime: Date.now() };
 }
 // Pictures arrive as data URLs and are stored as files; the desk reads them through /api/files.
+// A team's QR code: the check-in desk's, or the lunch counter's on its lunch coupons.
+const teamQr = (token, route) => QRCode.toDataURL(`${process.env.PUBLIC_URL || `http://localhost:${port}`}${route}?token=${token}`, { width: 240, margin: 2, color: { dark: '#172d2c', light: '#ffffff' } });
 const bytes = data => Buffer.from(data.slice(data.indexOf(',') + 1), 'base64');
 const fileUrl = path => `/api/files/team-files/${path}`;
 async function sendFile(res, bucket, path, cache) {
@@ -79,7 +81,7 @@ const server = http.createServer(async (req, res) => {
     }
     if (url.pathname === '/api/qr' && req.method === 'GET') {
       const t = state.teams.find(t => t.checkinToken === url.searchParams.get('token')); if (!t) return send(res, 404, { error: 'Team not found.' });
-      const qr = await QRCode.toDataURL(`${process.env.PUBLIC_URL || `http://localhost:${port}`}/checkin?token=${t.checkinToken}`, { width: 240, margin: 2, color: { dark: '#172d2c', light: '#ffffff' } }); return send(res, 200, { qr });
+      return send(res, 200, { qr: await teamQr(t.checkinToken, url.searchParams.get('for') === 'lunch' ? '/lunch' : '/checkin') });
     }
     if (url.pathname === '/api/link-qr' && req.method === 'GET') {
       const route = url.searchParams.get('route'); if (!shareRoutes.includes(route)) return send(res, 404, { error: 'Page not found.' });
@@ -120,10 +122,10 @@ const server = http.createServer(async (req, res) => {
         const id = String(input.id ?? '').trim().toUpperCase();
         if (limited(`form:${req.socket.remoteAddress}`, 10, 600000) || limited(`form:${id}`, 10, 600000)) return send(res, 429, { error: 'Too many tries. Try again in 10 minutes.' });
         const { checkinToken, ...team } = teamForm(state, id, input.mobile);
-        const qr = await QRCode.toDataURL(`${process.env.PUBLIC_URL || `http://localhost:${port}`}/checkin?token=${checkinToken}`, { width: 240, margin: 2, color: { dark: '#172d2c', light: '#ffffff' } });
+        const [qr, lunchQr] = await Promise.all([teamQr(checkinToken, '/checkin'), team.lunch ? teamQr(checkinToken, '/lunch') : '']);
         // The thumbnails, inline, for the form's photo boxes.
         const photos = await Promise.all(((await store.loadPhotos())[team.id] || []).map(async p => { const file = p && await store.readFile('team-files', thumbPath(p)); return file ? `data:image/jpeg;base64,${file.bytes.toString('base64')}` : ''; }));
-        return send(res, 200, { team, qr, photos });
+        return send(res, 200, { team, qr, lunchQr, photos });
       }
       const user = official(req);
       if (!user) return send(res, 401, { error: 'Sign in to the tournament desk first.' });

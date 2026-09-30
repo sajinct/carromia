@@ -1,6 +1,8 @@
 // The printable registration form a team downloads after registering: its details, the check-in QR
 // code, a declaration, the Parish Priest's attestation and the rule book. The desk can make the same
 // PDF again from the saved team. jsPDF is passed in (the browser loads it only when needed).
+// When the event has lunch coupons on, page 1 is set a little tighter and ends with a tear-off
+// coupon for each lunch the team booked, carrying the QR code the lunch counter scans.
 import { prizes, timeline, documents, goodToKnow, ruleSections, formatText } from './info.js';
 
 const green = [25, 62, 53], lime = [222, 237, 185], ink = [36, 51, 46], muted = [110, 118, 108], line = [210, 216, 204], soft = [243, 246, 238];
@@ -12,7 +14,8 @@ const clock = time => time ? new Date(`2000-01-01T${time}`).toLocaleTimeString('
 
 // Returns the jsPDF document; call .save(name) or .output('blob') on it.
 // logos: optional PNG/JPEG data URLs (the Mary Matha Church and Diocese of Mandya emblems).
-export function registrationPdf(jsPDF, { team, event, qr = '', photos = [], logos = [] }) {
+// lunchQr: the team's lunch-counter QR code, printed on its lunch coupons.
+export function registrationPdf(jsPDF, { team, event, qr = '', lunchQr = '', photos = [], logos = [] }) {
   const doc = new jsPDF({ unit: 'mm', format: 'a4' });
   doc.setProperties({ title: `CARROMIA ${event.year} registration ${team.id}`, subject: `${team.name} - ${team.parish}`, creator: 'CARROMIA' });
   const color = (c, kind = 'text') => kind === 'text' ? doc.setTextColor(...c) : kind === 'fill' ? doc.setFillColor(...c) : doc.setDrawColor(...c);
@@ -25,6 +28,10 @@ export function registrationPdf(jsPDF, { team, event, qr = '', photos = [], logo
     try { const { width, height } = doc.getImageProperties(data), s = Math.min(w / width, h / height); doc.addImage(data, format, x + (w - width * s) / 2, y + (h - height * s) / 2, width * s, height * s); return true; }
     catch { return false; }
   };
+
+  const lunches = event.lunchCoupons ? Math.min(2, Math.max(0, Number(team.lunch) || 0)) : 0, tight = lunches > 0;
+  // Where the tear-off lunch coupons start: page 1 must end above it.
+  const stripTop = bottom - 22;
 
   // Page 1: the registration form.
   color(green, 'fill'); doc.rect(0, 0, W, 36, 'F');
@@ -52,7 +59,7 @@ export function registrationPdf(jsPDF, { team, event, qr = '', photos = [], logo
   else { box(qrX, y + 2, qrSize, qrSize); font(8, 'normal', muted); text('Check-in QR code', qrX + qrSize / 2, y + 21, { align: 'center' }); }
 
   // Parish / centre.
-  y = 101; y = heading('Parish / Centre', y) + 1;
+  y = tight ? 98 : 101; y = heading('Parish / Centre', y) + 1;
   const pairs = [['Forane / Zone', team.forane || '-'], ['Parish / Centre', team.parish || '-'], ['Type', team.centreType || '-']];
   const colW = (W - 2 * M) / 3;
   pairs.forEach(([k, v], i) => { const x = M + i * colW; box(x, y, colW, 14); label(k, x + 3, y + 4.6); font(9, 'bold'); const lines = doc.splitTextToSize(v, colW - 6);
@@ -61,52 +68,80 @@ export function registrationPdf(jsPDF, { team, event, qr = '', photos = [], logo
   });
 
   // Players.
-  y += 21; y = heading('Players', y) + 1;
+  y += tight ? 19 : 21; y = heading('Players', y) + 1;
   const cols = [[M, 26, 'Photo'], [M + 26, 62, 'Player'], [M + 88, 40, 'ID proof'], [M + 128, W - 2 * M - 128, 'Signature']];
   cols.forEach(([x, w, name]) => { box(x, y, w, 6, green); font(7.5, 'bold', [255, 255, 255]); text(name, x + 2.5, y + 4.2); });
-  y += 6; const rowH = 25;
+  y += 6; const rowH = tight ? 20 : 25;
   team.players.forEach((p, i) => {
     cols.forEach(([x, w]) => box(x, y, w, rowH));
     if (!photos[i] || !fit(photos[i], M + 2, y + 2, 22, rowH - 4, 'JPEG')) { font(7, 'normal', muted); text('Photo', M + 13, y + rowH / 2 + 1, { align: 'center' }); }
     font(7, 'bold', muted); text(`PLAYER ${i + 1}${team.primaryContact === i ? '  |  PRIMARY CONTACT' : ''}`, M + 28.5, y + 6);
     font(10, 'bold'); text(doc.splitTextToSize(p.name, 57).slice(0, 2), M + 28.5, y + 12);
-    font(8.5, 'normal', muted); if (p.mobile) text(`Mobile ${p.mobile}`, M + 28.5, y + 21.5);
+    font(8.5, 'normal', muted); if (p.mobile) text(`Mobile ${p.mobile}`, M + 28.5, y + rowH - 3.5);
     font(9, 'bold'); text(p.idType || '-', M + 90.5, y + 12); font(8.5, 'normal', muted); text(p.idLast4 ? `Ends in ${p.idLast4}` : '', M + 90.5, y + 17.5);
     y += rowH;
   });
 
   // Lunch and fee.
-  y += 5.5; font(8.5, 'normal');
+  y += tight ? 5 : 5.5; font(8.5, 'normal');
   const paid = team.payment ? `${money(team.payment.amount)} paid online${team.payment.txnRef ? ` (UTR ${team.payment.txnRef})` : ''}, confirmed` : `${money(event.entryFee ?? 500)} per team, paid at the tournament desk`;
   text(`Lunch booked: ${team.lunch ? `${team.lunch === 2 ? 'both players' : '1 player'}` : 'none'}     |     Entry fee: ${paid}`, M, y);
   const contacts = (event.contacts || []).map(c => `${c.name} ${c.phone}`).join('   |   ');
   if (contacts) { y += 4.8; font(8.5, 'normal', muted); text(`For queries: ${contacts}`, M, y); }
 
   // Declaration.
-  y += 7.5; y = heading('Declaration by the players', y);
+  y += tight ? 6.5 : 7.5; y = heading('Declaration by the players', y);
   font(8.5); const declaration = doc.splitTextToSize(`We, the players named above, are 18 years of age or older and are members of ${team.parish || 'the parish / centre named above'}. The details given in this form are true. We have read the tournament rules attached to this form and agree to abide by them and by the decisions of the umpires and the organisers.`, W - 2 * M);
   text(declaration, M, y + 1); y += declaration.length * 3.8 + 2;
 
   // Attestation by the Parish Priest.
-  y += 3; y = heading('Attestation by the Parish Priest', y) + 1;
-  const sealW = 40, attH = contacts ? 31 : 35;
+  y += tight ? 2 : 3; y = heading('Attestation by the Parish Priest', y) + 1;
+  const sealW = 40, attH = tight ? 24 : contacts ? 31 : 35;
   box(M, y, W - 2 * M, attH);
   font(8.5); text(doc.splitTextToSize(`I certify that the players named above are members of ${team.parish || 'this parish / centre'}.`, W - 2 * M - sealW - 12), M + 4, y + 6);
   const lineAt = (name, ly, w = 88) => { font(8, 'normal', muted); text(name, M + 4, ly); color(ink, 'draw'); doc.setLineWidth(0.2); doc.line(M + 40, ly + 0.6, M + 40 + w, ly + 0.6); };
-  lineAt('Name of Parish Priest', y + attH * 0.44); lineAt('Signature', y + attH * 0.67); lineAt('Date', y + attH * 0.89, 40);
+  // Tighter, the signature and date share a line.
+  if (tight) { lineAt('Name of Parish Priest', y + 14); lineAt('Signature', y + 20.5, 46); font(8, 'normal', muted); text('Date', M + 92, y + 20.5); doc.line(M + 101, y + 21.1, M + 128, y + 21.1); }
+  else { lineAt('Name of Parish Priest', y + attH * 0.44); lineAt('Signature', y + attH * 0.67); lineAt('Date', y + attH * 0.89, 40); }
   const sealX = W - M - sealW - 4; doc.setLineDashPattern([1.2, 1.2], 0); color(muted, 'draw'); doc.roundedRect(sealX, y + 3, sealW, attH - 6, 2, 2); doc.setLineDashPattern([], 0);
   font(8, 'normal', muted); text('Parish seal', sealX + sealW / 2, y + attH / 2 + 1, { align: 'center' });
-  y += attH + 4;
+  y += attH + (tight ? 3 : 4);
 
   // For office use.
-  box(M, y, W - 2 * M, 11, soft); font(7, 'bold', muted); text('FOR OFFICE USE', M + 3, y + 6.8);
+  const officeH = tight ? 9 : 11, mark = y + officeH / 2 + 1.3;
+  box(M, y, W - 2 * M, officeH, soft); font(7, 'bold', muted); text('FOR OFFICE USE', M + 3, mark);
   // A fee paid online and confirmed by an official is already received, so its box comes ticked.
   const feeConfirmed = Boolean(team.payment) && team.status !== 'pending';
   [['Checked in', 45], ['Fee received', 77, feeConfirmed], ['ID verified', 111]].forEach(([name, x, ticked]) => {
-    box(M + x, y + 3.3, 4, 4); font(8); text(name, M + x + 6, y + 6.8);
-    if (ticked) { color(green, 'draw'); doc.setLineWidth(0.6); doc.lines([[1.1, 1.2], [2.3, -3]], M + x + 0.8, y + 5.4); }
+    box(M + x, mark - 3.5, 4, 4); font(8); text(name, M + x + 6, mark);
+    if (ticked) { color(green, 'draw'); doc.setLineWidth(0.6); doc.lines([[1.1, 1.2], [2.3, -3]], M + x + 0.8, mark - 1.4); }
   });
-  font(8); text('Official', M + 142, y + 6.8); color(ink, 'draw'); doc.line(M + 155, y + 7.3, W - M - 3, y + 7.3);
+  font(8); text('Official', M + 142, mark); color(ink, 'draw'); doc.line(M + 155, mark + 0.5, W - M - 3, mark + 0.5);
+  y += officeH;
+  // Kept for the tests: page 1 must end above the coupons.
+  doc.carromia = { formBottom: y, stripTop: tight ? stripTop : null };
+
+  // Lunch coupons: one per lunch booked, torn off along the dotted line.
+  if (tight) {
+    color(muted, 'draw'); doc.setLineWidth(0.3); doc.setLineDashPattern([1.5, 1.2], 0); doc.line(0, stripTop, W, stripTop);
+    const cut = `CUT ALONG THE DOTTED LINE  |  LUNCH COUPON${lunches > 1 ? 'S' : ''}`; font(6.5, 'bold', muted);
+    const cutW = doc.getTextWidth(cut) + 6; color([255, 255, 255], 'fill'); doc.rect(mid - cutW / 2, stripTop - 2, cutW, 4, 'F'); text(cut, mid, stripTop + 0.9, { align: 'center' });
+    const gap = 6, cw = (W - 2 * M - gap) / 2, ch = 22, top = stripTop + 3.5, size = ch - 7;
+    if (lunches > 1) doc.line(mid, stripTop + 2, mid, top + ch + 1);
+    doc.setLineDashPattern([], 0);
+    for (let n = 1; n <= lunches; n++) {
+      const x = M + (n - 1) * (cw + gap);
+      box(x, top, cw, ch, soft); color(green, 'fill'); doc.rect(x, top, cw, 5, 'F');
+      font(7.5, 'bold', [255, 255, 255]); text('LUNCH COUPON', x + 3, top + 3.5); font(7, 'bold', lime); text(`${n} of ${lunches}`, x + cw - 3, top + 3.5, { align: 'right' });
+      const qrX = x + cw - size - 2, qrY = top + 6;
+      if (!lunchQr || !fit(lunchQr, qrX, qrY, size, size, 'PNG')) { box(qrX, qrY, size, size, [255, 255, 255]); font(6, 'normal', muted); text('Lunch QR', qrX + size / 2, qrY + size / 2 + 1, { align: 'center' }); }
+      const textW = cw - size - 8;
+      font(12, 'bold', green); text(team.id, x + 3, top + 10.8);
+      font(8, 'bold'); text(doc.splitTextToSize(team.name, textW)[0], x + 3, top + 14.4);
+      font(6.5, 'normal', muted); text(doc.splitTextToSize(`${event.name || 'CARROMIA'} ${event.year || ''}  |  ${longDate(event.date)}  |  Valid on the day`, textW)[0], x + 3, top + 17.4);
+      font(6.5, 'bold', green); text(`${team.id}-L${n}  |  Scan at the lunch counter`, x + 3, top + 20.2);
+    }
+  }
 
   // Rule book.
   doc.addPage(); y = pageTop('Rule book');
