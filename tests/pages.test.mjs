@@ -50,7 +50,11 @@ function fakeSupabase() {
     if (['/rest/v1/rpc/register_teams', '/rest/v1/rpc/team_form', '/rest/v1/rpc/group_form', '/rest/v1/rpc/unreferenced_files'].includes(url.pathname) && !service) return reply(404, { message: 'Could not find the function in the schema cache' });
     switch (url.pathname) {
       case '/rest/v1/rpc/server_time': return reply(200, Date.now());
-      case '/rest/v1/tournament_public': return reply(200, db.pub[id] ? [structuredClone(db.pub[id])] : []);
+      case '/rest/v1/tournament_public': {
+        // The screens' version check asks for its event and the real one: id=in.(main,practice).
+        const ids = [...new Set(/^in\.\((.*)\)$/.exec(url.searchParams.get('id'))?.[1].split(',') ?? [id])];
+        return reply(200, ids.filter(i => db.pub[i]).map(i => ({ id: i, ...structuredClone(db.pub[i]), practiceOff: db.pub[i].state.event?.practiceOff ?? null })));
+      }
       case '/rest/v1/tournament': return reply(200, caller?.official && db.rows[id] ? [structuredClone(db.rows[id])] : []);
       case '/rest/v1/officials': { const who = service ? Object.values(users).find(u => u.id === eq('user_id')) : caller; return reply(200, who ? [who.official] : []); }
       case '/rest/v1/player_photos': return reply(200, caller?.official ? db.photos.filter(p => p.event === eq('event') && (!eq('team_id') || p.team_id === eq('team_id')) && (!eq('player') || p.player === Number(eq('player')))) : []);
@@ -242,4 +246,64 @@ test('live Pages runtime: a parish registers several teams at once; the coordina
   assert.deepEqual(forms.map(g => g.team.id), ['CAR-001', 'CAR-002']); assert.ok(forms.every(g => typeof g.qr === 'string' && g.team.checkinToken === undefined));
   assert.equal(new Set(forms.flatMap(g => g.photos)).size, 4, 'each team’s own thumbnails');
   assert.equal((await remoteApi('team-form', { id: 'CAR-002', mobile: '9900000000' })).team.id, 'CAR-002', 'the coordinator can download one team’s form too');
+});
+test('live Pages runtime: screens follow Realtime announcements and fall back to version checks', async t => {
+  const db = fakeSupabase(), memory = new Map(), realFetch = globalThis.fetch;
+  let fetches = 0, changes = 0;
+  const listeners = [], document = { hidden: false, addEventListener: (type, fn) => listeners.push(fn) };
+  const setHidden = hidden => { document.hidden = hidden; listeners.forEach(fn => fn()); };
+  globalThis.localStorage = { getItem: key => memory.get(key) ?? null, setItem: (key, value) => memory.set(key, value), removeItem: key => memory.delete(key) };
+  globalThis.fetch = (...args) => { fetches++; return db.fetch(...args); }; globalThis.location = { origin: 'https://sajinct.github.io', pathname: '/carromia/', search: '' }; globalThis.document = document;
+  t.after(() => { globalThis.fetch = realFetch; delete globalThis.localStorage; delete globalThis.location; delete globalThis.document; });
+  t.mock.timers.enable({ apis: ['setInterval', 'setTimeout'] });
+  const sockets = [];
+  class FakeSocket {
+    constructor(url) { this.url = url; this.sent = []; this.closed = false; sockets.push(this); }
+    send(text) { this.sent.push(JSON.parse(text)); }
+    close() { if (this.closed) return; this.closed = true; this.onclose?.(); }
+    receive(message) { this.onmessage({ data: JSON.stringify(message) }); }
+    joined() { return this.sent.filter(m => m.event === 'phx_join').map(m => m.topic); }
+    accept() { this.onopen(); this.sent.filter(m => m.event === 'phx_join').forEach(m => this.receive({ topic: m.topic, event: 'phx_reply', ref: m.ref, payload: { status: 'ok', response: {} } })); }
+    announce(event, payload) { this.receive({ topic: `realtime:tournament:${event}`, event: 'broadcast', ref: null, payload: { type: 'broadcast', event: 'changed', payload } }); }
+  }
+  const settle = async () => { for (let i = 0; i < 20; i++) await new Promise(resolve => setImmediate(resolve)); };
+  const { watch } = await import('../dist/runtime.js');
+  watch(() => changes++, { WebSocketImpl: FakeSocket });
+  await settle();
+  assert.equal(sockets.length, 1); assert.match(sockets[0].url, /^wss:\/\/vzxcqpgwvknonkhjinuk\.supabase\.co\/realtime\/v1\/websocket\?apikey=sb_publishable_/);
+  sockets[0].accept(); await settle();
+  assert.deepEqual(sockets[0].joined(), ['realtime:tournament:main']);
+  // Joined, but nothing announced yet (a database without the migration): version checks carry on.
+  db.pub.main.version = 6; t.mock.timers.tick(10000); await settle();
+  assert.equal(changes, 1, 'the version check caught a change the channel never announced');
+
+  // A change announced on the channel: one redraw, none for a repeat; no polling while connected.
+  const before = fetches;
+  db.pub.main.version = 7; sockets[0].announce('main', { version: 7, practiceOff: false }); sockets[0].announce('main', { version: 7, practiceOff: false });
+  t.mock.timers.tick(30000); await settle();
+  assert.equal(changes, 2); assert.equal(fetches, before, 'no version checks once the channel has announced a change');
+  assert.ok(sockets[0].sent.some(m => m.topic === 'phoenix' && m.event === 'heartbeat'));
+
+  // The connection drops: version checks stand in until it reconnects.
+  sockets[0].close(); db.pub.main.version = 8;
+  t.mock.timers.tick(1000); await settle();
+  assert.equal(sockets.length, 2, 'reconnects after a second');
+  t.mock.timers.tick(9000); await settle();
+  assert.equal(changes, 3, 'the version check caught the change');
+
+  // Practice mode on this device: the screen follows the practice channel and the real one, and
+  // goes back when an admin turns practice off.
+  memory.set('carromia-practice', 'on'); db.pub.practice = { version: 3, state: db.pub.main.state };
+  t.mock.timers.tick(10000); await settle();
+  const practice = sockets.at(-1); practice.accept(); await settle();
+  assert.deepEqual(practice.joined(), ['realtime:tournament:main', 'realtime:tournament:practice']);
+  const now = changes;
+  practice.announce('main', { version: 9, practiceOff: false }); assert.equal(changes, now, 'the real event’s changes don’t redraw a practice screen');
+  practice.announce('main', { version: 10, practiceOff: true }); assert.equal(changes, now + 1);
+
+  // A hidden tab lets go of its connection, and reconnects when shown again.
+  setHidden(true); t.mock.timers.tick(60000); await settle();
+  assert.ok(practice.closed); const count = sockets.length;
+  setHidden(false); await settle();
+  assert.equal(sockets.length, count + 1);
 });

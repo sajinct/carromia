@@ -4,7 +4,7 @@ A responsive tournament website and installable web app for CARROMIA 2026, the f
 
 ## Live site (GitHub Pages + Supabase)
 
-https://sajinct.github.io/carromia/ is the live event site. The static app talks to Supabase directly: every visitor sees the same boards and bracket, updated within a few seconds, and officials run the desk from any phone or laptop.
+https://sajinct.github.io/carromia/ is the live event site. The static app talks to Supabase directly: every visitor sees the same boards and bracket, updated within a second or two over Supabase Realtime, and officials run the desk from any phone or laptop.
 
 - **Visitors** read `tournament_public`, a copy without mobile numbers, check-in tokens or desk activity.
 - **Officials** sign in with their Supabase email and password. Their browser applies the tournament rules and saves through `save_tournament()`, which checks they are an official, rejects a save if someone else saved first (the app reloads and retries automatically), updates both copies together and writes the audit log.
@@ -28,7 +28,8 @@ https://sajinct.github.io/carromia/ is the live event site. The static app talks
 5. **Registration Edge Function (required):** deploy `supabase/functions/registration/index.ts` the same way as `officials`, named `registration`, and turn **off** *Enforce JWT verification* (visitors registering are not signed in). It holds the service key for the private `team-files` bucket: it uploads a registration's photos and screenshot, gives the registration-form download short-lived links to the photos, and deletes files nothing uses any more after a team is removed or the event is reset.
 6. **Moving pictures saved before Storage was used** (once, only if teams registered before `20261005000000_carromia_storage.sql`): with `SUPABASE_URL` and `SUPABASE_SECRET_KEY` in `.env`, run `npm run move:images`. It copies each old photo, screenshot and UPI QR code into Storage and records its path (old photos keep their original small size). When it reports nothing left to move, run `supabase/migrations/20261006000000_carromia_storage_cleanup.sql` to drop the old picture columns.
    Deploy order for an existing site: the storage migration, then the `registration` function, then the new site build, then `npm run move:images`, then the cleanup migration.
-7. Recommended: **Authentication → Sign In / Providers → turn off "Allow new users to sign up"**, so only accounts you create exist.
+7. **Live updates:** run `supabase/migrations/20261008000000_carromia_realtime.sql` (after `20261007000000_carromia_group_registration.sql`). Whenever the public copy changes, the database sends a Realtime message `changed` with just `{ version, practiceOff }` on the public channel `tournament:main` or `tournament:practice`. Open screens then fetch the event right away, rather than checking every few seconds. Keep **Project Settings → Realtime → Allow public access** on (the default). Without the migration, or while a screen's connection is down, screens check the version every 10 seconds. Each visible tab holds one Realtime connection (the Free plan allows 200 at once), and hidden tabs let go of theirs.
+8. Recommended: **Authentication → Sign In / Providers → turn off "Allow new users to sign up"**, so only accounts you create exist.
 
 ### Registration, practice mode and team removal
 

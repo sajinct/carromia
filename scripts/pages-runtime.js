@@ -230,16 +230,68 @@ export async function remoteApi(path, input = {}) {
   return { ok: true };
 }
 
-// Calls onChange whenever the followed event changes (a cheap version check every few seconds).
-export function watch(onChange) {
-  let known = null;
+// Calls onChange whenever the followed event changes. The database announces each change on a
+// Realtime channel (supabase/migrations/20261008000000_carromia_realtime.sql), so a screen fetches
+// the event only when something happened. A cheap version check every 10 seconds stands in while
+// that connection is down, and until the channel has announced a change at all (so a database
+// without the migration still updates). A practice screen also hears when an admin turns practice
+// off, which sends it back to the real event. Hidden tabs let go of their connection.
+export function watch(onChange, { WebSocketImpl = globalThis.WebSocket, every = 10000 } = {}) {
+  let known = null, socket = null, retry = 1000, trusted = false;
+  const seen = (id, version, practiceOff) => {
+    const key = `${id}:${version}`, changed = known !== null && key !== known;
+    known = key;
+    if (changed || (id === 'practice' && practiceOff)) onChange();
+  };
   const check = async () => {
     if (document.hidden) return;
     try {
-      const id = eventId(), [row] = await request(`/rest/v1/tournament_public?id=eq.${id}&select=version`);
-      const version = `${id}:${row?.version ?? 0}`; if (known !== null && version !== known) onChange(); known = version;
+      const id = eventId(), rows = await request(`/rest/v1/tournament_public?id=in.(main,${id})&select=id,version,practiceOff:state->event->practiceOff`);
+      seen(id, rows.find(r => r.id === id)?.version ?? 0, rows.find(r => r.id === 'main')?.practiceOff === true);
     } catch {}
   };
-  check(); setInterval(check, 4000);
-  document.addEventListener('visibilitychange', () => { if (!document.hidden) check(); });
+  const connect = () => {
+    if (socket || document.hidden || !WebSocketImpl) return;
+    const id = eventId(), topics = id === 'practice' ? ['main', 'practice'] : ['main'];
+    const ws = socket = new WebSocketImpl(`${SUPABASE_URL.replace(/^http/, 'ws')}/realtime/v1/websocket?apikey=${PUBLISHABLE_KEY}&vsn=1.0.0`);
+    ws.event = id; ws.live = false;
+    let ref = 0, beat;
+    const send = (topic, event, payload = {}) => ws.send(JSON.stringify({ topic, event, payload, ref: String(++ref), join_ref: topic === 'phoenix' ? null : topic }));
+    ws.onopen = () => {
+      topics.forEach(t => send(`realtime:tournament:${t}`, 'phx_join', { config: { broadcast: { self: false, ack: false }, presence: { key: '', enabled: false }, postgres_changes: [], private: false } }));
+      beat = setInterval(() => send('phoenix', 'heartbeat'), 25000);
+    };
+    ws.onmessage = ({ data }) => {
+      let message; try { message = JSON.parse(data); } catch { return; }
+      const { topic, event, payload } = message;
+      if (!topic?.startsWith('realtime:tournament:')) return;
+      if (event === 'phx_reply' && payload?.status !== 'ok') ws.close();
+      else if (event === 'phx_error' || event === 'phx_close') ws.close();
+      // Once joined, catch up on anything that changed while connecting.
+      else if (event === 'phx_reply' && topic === `realtime:tournament:${id}` && !ws.live) { ws.live = true; retry = 1000; check(); }
+      else if (event === 'broadcast' && payload?.event === 'changed') announced(topic, payload.payload ?? {});
+    };
+    const announced = (topic, { version, practiceOff }) => {
+      if (topic === `realtime:tournament:${id}` && typeof version === 'number') { trusted = true; seen(id, version, false); }
+      else if (topic === `realtime:tournament:${id}`) check();
+      else if (id === 'practice' && practiceOff === true) onChange();
+    };
+    ws.onerror = () => ws.close();
+    ws.onclose = () => {
+      clearInterval(beat);
+      if (socket !== ws) return;
+      socket = null; setTimeout(connect, retry); retry = Math.min(retry * 2, 60000);
+    };
+  };
+  const disconnect = () => { const ws = socket; socket = null; ws?.close(); };
+  check(); connect();
+  setInterval(() => {
+    // Practice mode switched on this device: follow the other event's channel.
+    if (socket && socket.event !== eventId()) { disconnect(); connect(); }
+    if (!socket?.live || !trusted) check();
+  }, every);
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) disconnect();
+    else { retry = 1000; check(); connect(); }
+  });
 }

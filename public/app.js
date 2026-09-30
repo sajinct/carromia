@@ -683,5 +683,6 @@ if (pagesMode) {
   events.onerror = () => { connected = false; updateConnection(); };
 }
 setInterval(tick, 1000);
-setInterval(() => sync('auto'), 15000);
+// Fallback refresh; on Pages watch() already syncs on every change, so it only needs a rare safety net.
+setInterval(() => sync('auto'), pagesMode ? 300000 : 15000);
 if ('serviceWorker' in navigator) navigator.serviceWorker.register(pagesMode ? './sw.js' : '/sw.js').catch(() => {});
