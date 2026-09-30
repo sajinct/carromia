@@ -4,7 +4,7 @@ import { join, extname } from 'node:path';
 import { randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
 import QRCode from 'qrcode';
 import { fileStore, supabaseStore, ConflictError } from './lib/store.mjs';
-import { emptyState, addTeams, playerPhotos, paymentProof, teamForm, groupForm, publicTeam, eligible, fail, actions, registrationStatus, defaults, shareRoutes, teamFiles, thumbPath, teamFilePath, assetPath, upiQrImage, maxGroupTeams, maxPhotoLength, maxThumbLength, maxScreenshotLength } from './lib/tournament.mjs';
+import { emptyState, addTeams, playerPhotos, paymentProof, teamForm, groupForm, publicTeam, eligible, fail, actions, refusal, checkBoard, teamsFor, fileRoles, registrationStatus, defaults, shareRoutes, teamFiles, thumbPath, teamFilePath, assetPath, upiQrImage, maxGroupTeams, maxPhotoLength, maxThumbLength, maxScreenshotLength } from './lib/tournament.mjs';
 
 const port = Number(process.env.PORT || 3000);
 const host = process.env.HOST || '127.0.0.1';
@@ -42,7 +42,7 @@ function send(res, status, value) { res.writeHead(status, { 'Content-Type': 'app
 async function body(req, limit = 20000) { let text = ''; for await (const chunk of req) { text += chunk; if (text.length > limit) throw new Error('Request too large.'); } return JSON.parse(text || '{}'); }
 function view(user) {
   const isAdmin = Boolean(user);
-  return { ...state, event: { ...defaults, ...state.event }, teams: isAdmin ? state.teams : state.teams.map(publicTeam), activity: isAdmin ? state.activity : [], matches: state.matches.map(m => ({ ...m, blockedReason: eligible(state, m) })), registration: registrationStatus(state), isAdmin, user: user && { name: user.name, role: user.role }, authMode: supabase ? 'supabase' : 'password', localDemo: !supabase && !process.env.ADMIN_PASSWORD, serverTime: Date.now() };
+  return { ...state, event: { ...defaults, ...state.event }, teams: isAdmin ? teamsFor(state.teams, user.role) : state.teams.map(publicTeam), activity: isAdmin ? state.activity : [], matches: state.matches.map(m => ({ ...m, blockedReason: eligible(state, m) })), registration: registrationStatus(state), isAdmin, user: user && { name: user.name, role: user.role, boards: user.boards || [] }, authMode: supabase ? 'supabase' : 'password', localDemo: !supabase && !process.env.ADMIN_PASSWORD, serverTime: Date.now() };
 }
 // Pictures arrive as data URLs and are stored as files; the desk reads them through /api/files.
 // A team's QR code: the check-in desk's, or the lunch counter's on its lunch coupons.
@@ -72,7 +72,11 @@ const server = http.createServer(async (req, res) => {
     if (url.pathname.startsWith('/api/assets/') && req.method === 'GET') { const path = url.pathname.slice(12); if (!assetPath.test(path)) return send(res, 404, { error: 'File not found.' }); return sendFile(res, 'event-assets', path, 'public, max-age=86400, immutable'); }
     if (['/api/payment-proofs', '/api/photos', '/api/photo-full'].includes(url.pathname) || url.pathname.startsWith('/api/files/')) {
       if (req.method !== 'GET') return send(res, 405, { error: 'Method not allowed.' });
-      if (!official(req)) return send(res, 401, { error: 'Sign in to the tournament desk first.' });
+      const user = official(req);
+      if (!user) return send(res, 401, { error: 'Sign in to the tournament desk first.' });
+      // Payment screenshots are for admins and officials; player photos also for the check-in desk.
+      const kind = url.pathname === '/api/payment-proofs' || url.pathname.endsWith('/payment.jpg') ? 'payments' : 'photos';
+      if (!fileRoles[kind].includes(user.role)) return send(res, 403, { error: kind === 'payments' ? 'Payment screenshots are for event admins and officials.' : 'Player photos are for the check-in desk, officials and admins.' });
       if (url.pathname === '/api/payment-proofs') return send(res, 200, Object.fromEntries(Object.entries(await store.loadPaymentProofs()).map(([id, path]) => [id, fileUrl(path)])));
       // Thumbnails for lists: { [team id]: [photo 1, photo 2] }; the full photo is asked for one at a time.
       if (url.pathname === '/api/photos') return send(res, 200, Object.fromEntries(Object.entries(await store.loadPhotos()).map(([id, paths]) => [id, paths.map(p => p && fileUrl(thumbPath(p)))])));
@@ -158,8 +162,8 @@ const server = http.createServer(async (req, res) => {
       }
       const action = actions[url.pathname.slice(5)];
       if (!action) return send(res, 404, { error: 'Endpoint not found.' });
-      if (action.admin && user.role !== 'admin') return send(res, 403, { error: 'Only an event admin can do this.' });
-      await change(() => { const next = action.run(state, input, { now: Date.now(), official: user.name }); if (next) state = next; });
+      const refused = refusal(action, user); if (refused) return send(res, 403, { error: refused });
+      await change(() => { checkBoard(state, input, user); const next = action.run(state, input, { now: Date.now(), official: user.name }); if (next) state = next; });
       // Photos go with their team: a removed team's, or every one when a fresh event starts.
       try {
         if (url.pathname === '/api/remove-team') await store.deletePhotos(String(input.id));

@@ -8,8 +8,8 @@ import { centre, player, photo } from './registration-fixture.mjs';
 // A minimal stand-in for the Supabase REST and Auth endpoints the server uses.
 function mockSupabase() {
   const db = { row: null, public: null, audit: [], photos: [], files: new Map(), badKeyHeaders: 0 };
-  const users = { 'asha@example.org': { id: 'u1', password: 'admin-pass' }, 'omar@example.org': { id: 'u2', password: 'official-pass' }, 'guest@example.org': { id: 'u3', password: 'guest-pass' } };
-  const officials = { u1: { name: 'Asha Admin', role: 'admin' }, u2: { name: 'Omar Official', role: 'official' } };
+  const users = { 'asha@example.org': { id: 'u1', password: 'admin-pass' }, 'omar@example.org': { id: 'u2', password: 'official-pass' }, 'guest@example.org': { id: 'u3', password: 'guest-pass' }, 'cara@example.org': { id: 'u4', password: 'checkin-pass' }, 'lena@example.org': { id: 'u5', password: 'lunch-pass' }, 'uma@example.org': { id: 'u6', password: 'umpire-pass' } };
+  const officials = { u1: { name: 'Asha Admin', role: 'admin', boards: [] }, u2: { name: 'Omar Official', role: 'official', boards: [] }, u4: { name: 'Cara Checkin', role: 'checkin', boards: [] }, u5: { name: 'Lena Lunch', role: 'lunch', boards: [] }, u6: { name: 'Uma Umpire', role: 'umpire', boards: [1] } };
   const server = http.createServer(async (req, res) => {
     const chunks = []; for await (const chunk of req) chunks.push(chunk);
     const raw = Buffer.concat(chunks), json = /json/.test(req.headers['content-type'] || '') || !req.headers['content-type'];
@@ -70,7 +70,7 @@ test('Supabase mode: named officials, roles, audit trail, and conflict-safe save
   assert.equal((await post('login', { email: 'asha@example.org', password: 'wrong' })).status, 401);
   assert.equal((await post('login', { email: 'guest@example.org', password: 'guest-pass' })).status, 401, 'non-officials cannot sign in');
   const official = await login('omar@example.org', 'official-pass'), admin = await login('ASHA@example.org ', 'admin-pass');
-  assert.deepEqual((await state(official)).user, { name: 'Omar Official', role: 'official' });
+  assert.deepEqual((await state(official)).user, { name: 'Omar Official', role: 'official', boards: [] });
   const thumbs = (await (await fetch(`${base}/api/photos`, { headers: { Cookie: official } })).json())['CAR-001'];
   assert.deepEqual(thumbs, db.photos.filter(p => p.team_id === 'CAR-001').map(p => `/api/files/team-files/${p.path.replace('.jpg', '-thumb.jpg')}`));
   assert.deepEqual(Buffer.from(await (await fetch(base + thumbs[0], { headers: { Cookie: official } })).arrayBuffer()), Buffer.from(photo.split(',')[1], 'base64'), 'the server passes files on from Storage');
@@ -93,6 +93,29 @@ test('Supabase mode: named officials, roles, audit trail, and conflict-safe save
   assert.equal(db.row.state.matches.find(m => m.id === ready.id).status, 'called');
   assert.equal(db.row.state.event.venue, 'Changed elsewhere', 'the retry builds on the other instance’s change');
 
+  // One-job roles: each does only its own job, sees only what it needs, and an umpire only runs their boards.
+  const desk = await login('cara@example.org', 'checkin-pass'), counter = await login('lena@example.org', 'lunch-pass'), umpire = await login('uma@example.org', 'umpire-pass');
+  const deskView = await state(desk), counterView = await state(counter);
+  assert.deepEqual(deskView.user, { name: 'Cara Checkin', role: 'checkin', boards: [] }); assert.deepEqual((await state(umpire)).user, { name: 'Uma Umpire', role: 'umpire', boards: [1] });
+  assert.equal(deskView.teams[0].players[0].mobile, undefined, 'no contact numbers'); assert.equal(deskView.teams[0].players[0].idType, 'Aadhaar', 'the check-in desk compares IDs'); assert.ok(deskView.teams[0].checkinToken, 'a scanned QR code finds its team');
+  assert.equal(counterView.teams[0].players[0].idType, undefined); assert.ok(counterView.teams[0].checkinToken, 'a scanned coupon finds its team');
+  assert.equal((await post('checkin', { id: 'CAR-001' }, desk)).status, 200);
+  for (const [path, body, cookie] of [['assign', { id: ready.id, board: 2 }, desk], ['confirm-payment', { id: 'CAR-001' }, desk], ['checkin', { id: 'CAR-001' }, counter], ['serve-lunch', { id: 'CAR-001' }, desk], ['checkin', { id: 'CAR-001' }, umpire], ['unassign', { id: ready.id }, umpire], ['assign', { id: ready.id, board: 1 }, umpire], ['draw', {}, umpire]]) {
+    assert.equal((await post(path, body, cookie)).status, 403, `${path} is not part of this role`);
+  }
+  assert.equal((await fetch(`${base}/api/photos`, { headers: { Cookie: desk } })).status, 200, 'the check-in desk sees player photos');
+  assert.equal((await fetch(`${base}/api/payment-proofs`, { headers: { Cookie: desk } })).status, 403);
+  for (const cookie of [counter, umpire]) {
+    assert.equal((await fetch(`${base}/api/photos`, { headers: { Cookie: cookie } })).status, 403);
+    assert.equal((await fetch(base + thumbs[0], { headers: { Cookie: cookie } })).status, 403);
+  }
+  const other = (await state(official)).matches.find(m => m.status === 'ready' && !m.blockedReason);
+  assert.equal((await post('assign', { id: other.id, board: 2 }, official)).status, 200);
+  const refused = await post('start', { id: other.id }, umpire);
+  assert.equal(refused.status, 400); assert.match((await refused.json()).error, /isn’t assigned to you/);
+  assert.equal((await post('start', { id: ready.id }, umpire)).status, 200, 'the umpire starts the match on their board');
+  assert.equal(db.row.state.matches.find(m => m.id === ready.id).status, 'playing'); assert.equal(db.row.state.matches.find(m => m.id === other.id).status, 'called');
+
   // An official changes their own password; the current one must be right.
   assert.equal((await post('change-password', { current: 'official-pass', password: 'new-secret-1' })).status, 401, 'signed-out visitors cannot change a password');
   assert.equal((await post('change-password', { current: 'wrong', password: 'new-secret-1' }, official)).status, 401);
@@ -100,7 +123,7 @@ test('Supabase mode: named officials, roles, audit trail, and conflict-safe save
   assert.equal((await post('change-password', { current: 'official-pass', password: 'new-secret-1' }, official)).status, 200);
   assert.equal((await post('login', { email: 'omar@example.org', password: 'official-pass' })).status, 401, 'the old password stops working');
   await login('omar@example.org', 'new-secret-1');
-  assert.deepEqual((await state(official)).user, { name: 'Omar Official', role: 'official' }, 'they stay signed in');
+  assert.deepEqual((await state(official)).user, { name: 'Omar Official', role: 'official', boards: [] }, 'they stay signed in');
 
   await new Promise(resolve => setTimeout(resolve, 100));
   const actions = db.audit.map(a => `${a.actor_name}:${a.action}`);

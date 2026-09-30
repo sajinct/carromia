@@ -5,7 +5,7 @@
 // separate 'practice' event instead, so a TV, phones and the desk can rehearse the full flow
 // without touching the real event. It stays on until "Exit practice", or until an admin turns
 // practice mode off for everyone (practiceOff on the real event), which sends every device back.
-import { emptyState, eligible, fail, freshEvent, publicState, practiceEvent, actions, registrationStatus, defaults, playerPhotos, paymentProof, shareRoutes, thumbPath, upiQrImage } from './tournament-browser.js';
+import { emptyState, eligible, fail, freshEvent, publicState, practiceEvent, actions, refusal, checkBoard, teamsFor, fileRoles, registrationStatus, defaults, playerPhotos, paymentProof, shareRoutes, thumbPath, upiQrImage } from './tournament-browser.js';
 import { findCentre } from './parishes.js';
 
 export const pagesMode = true;
@@ -114,7 +114,7 @@ async function signIn(input) {
   let session;
   try { session = await request('/auth/v1/token?grant_type=password', { method: 'POST', body: { email, password: String(input.password || '') } }); }
   catch (error) { throw new Error(error.status === 400 ? 'Incorrect email or password.' : error.message); }
-  const [profile] = await request(`/rest/v1/officials?user_id=eq.${encodeURIComponent(session.user.id)}&select=name,role`, { token: session.access_token });
+  const [profile] = await request(`/rest/v1/officials?user_id=eq.${encodeURIComponent(session.user.id)}&select=name,role,boards`, { token: session.access_token });
   fail(!profile, 'This account is not a tournament official.');
   writeSession({ access_token: session.access_token, refresh_token: session.refresh_token, expires_at: session.expires_at, official: profile });
   return { ok: true };
@@ -137,12 +137,21 @@ async function changePassword(input) {
   return { ok: true };
 }
 
-// What the screens render: the followed event, with private details only for officials.
+// The signed-in official's name, role and boards, read again on each refresh so a change an admin
+// makes applies without signing out. An official who was removed is signed out.
+async function profile(user) {
+  const [row] = await request('/rest/v1/officials?select=name,role,boards', { token: user.token });
+  if (!row) { writeSession(null); return null; }
+  writeSession({ ...readSession(), official: row }); return { ...user, ...row };
+}
+// What the screens render: the followed event, with private details only for officials, and for
+// the one-job roles only what their job needs.
 async function view(user) {
   if (practiceOn() && await practiceOff()) setPractice(false);
+  if (user) user = await profile(user);
   const { state } = await load(user), practice = eventId() === 'practice';
-  const { teams } = state;
-  return { ...state, event: { ...defaults, ...state.event }, practice, practiceAvailable: !state.event.practiceOff && (Boolean(user) || practice), practiceLinks: practice ? { live: practiceLink('/live'), register: practiceLink('/register'), desk: practiceLink('/admin') } : null, teams, activity: user ? state.activity : [], matches: state.matches.map(m => ({ ...m, blockedReason: eligible(state, m, now()) })), registration: registrationStatus({ ...state, practice }, now()), isAdmin: Boolean(user), user: user && { name: user.name, role: user.role }, authMode: 'supabase', localDemo: false, serverTime: now() };
+  const teams = user ? teamsFor(state.teams, user.role) : state.teams;
+  return { ...state, event: { ...defaults, ...state.event }, practice, practiceAvailable: !state.event.practiceOff && (Boolean(user) || practice), practiceLinks: practice ? { live: practiceLink('/live'), register: practiceLink('/register'), desk: practiceLink('/admin') } : null, teams, activity: user ? state.activity : [], matches: state.matches.map(m => ({ ...m, blockedReason: eligible(state, m, now()) })), registration: registrationStatus({ ...state, practice }, now()), isAdmin: Boolean(user), user: user && { name: user.name, role: user.role, boards: user.boards || [] }, authMode: 'supabase', localDemo: false, serverTime: now() };
 }
 
 // Officials are managed by the 'officials' Edge Function (supabase/functions/officials), which holds
@@ -194,6 +203,9 @@ export async function remoteApi(path, input = {}) {
   if (path === 'state') return view(user);
   if (officialActions[path]) return manageOfficials(user, officialActions[path], input);
   fail(!user, 'Sign in to the tournament desk first.');
+  // Payment screenshots are for admins and officials; player photos also for the check-in desk.
+  const kind = path === 'payment-proofs' ? 'payments' : path === 'photos' || path.startsWith('photo-full?') ? 'photos' : null;
+  fail(kind && !fileRoles[kind].includes(user.role), kind === 'payments' ? 'Payment screenshots are for event admins and officials.' : 'Player photos are for the check-in desk, officials and admins.');
   // Player photo thumbnails, for officials: { [team id]: [photo 1, photo 2] }.
   if (path === 'photos') {
     const rows = (await request(`/rest/v1/player_photos?event=eq.${eventId()}&select=team_id,player,path`, { token: user.token })).filter(r => r.path);
@@ -222,9 +234,10 @@ export async function remoteApi(path, input = {}) {
   if (path === 'backup') { fail(user.role !== 'admin', 'Only an event admin can download backups.'); return (await load(user)).state; }
   const action = handlers[path];
   fail(!action, 'This action is not available.');
-  // In practice mode every official may try every action; the real event keeps admin-only actions.
-  fail(action.admin && user.role !== 'admin' && !practiceOn(), 'Only an event admin can do this.');
-  await change(user, path, input, (state, event) => action.run(state, input, { now: now(), official: user.name, event }));
+  // In practice mode an official may try every action; the real event keeps admin-only actions.
+  // Check-in, lunch and umpire accounts do only their own job, in practice too.
+  const refused = refusal(action, user, practiceOn()); fail(refused, refused);
+  await change(user, path, input, (state, event) => { checkBoard(state, input, user); return action.run(state, input, { now: now(), official: user.name, event }); });
   // A removed team's files, or a fresh event's, are deleted in the background.
   if (path === 'remove-team' || path === 'reset') registration({ action: 'sweep' }, user.token).catch(() => {});
   return { ok: true };

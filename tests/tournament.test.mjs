@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { emptyState, addTeam, serveLunch, createDraw, assign, start, roundWinner, nextRound, undoRound, eligible, updateSettings, boardReady, removeTeam, practiceEvent, publicState, walkover, undoWalkover, correctResult, unassign, actions, practiceMode, registrationStatus, parishKey, playerPhotos, upiQrImage, seedDemo, paymentProof, confirmPayment, checkIn, isConfirmed, addTeams, teamForm, groupForm, groupTeams, publicTeam } from '../lib/tournament.mjs';
+import { emptyState, addTeam, serveLunch, createDraw, assign, start, roundWinner, nextRound, undoRound, eligible, updateSettings, boardReady, removeTeam, practiceEvent, publicState, walkover, undoWalkover, correctResult, unassign, actions, practiceMode, registrationStatus, parishKey, playerPhotos, upiQrImage, seedDemo, paymentProof, confirmPayment, checkIn, isConfirmed, addTeams, teamForm, groupForm, groupTeams, publicTeam, refusal, checkBoard, staffTeam, teamsFor } from '../lib/tournament.mjs';
 import { centres, groups, findCentre } from '../public/parishes.js';
 import { centre, player, photo } from './registration-fixture.mjs';
 // A team from the i-th parish or centre of the diocese register.
@@ -315,4 +315,33 @@ test('the action registry names every desk action and flags the admin-only ones'
   actions['round-winner'].run(s, { id: 'M01', winner: m.teamA }, { now: 600000, official: 'Asha Admin' }); assert.equal(m.official, 'Asha Admin');
   assert.equal(actions.settings.run(s, { name: 'Cup', venue: 'Hall', gameMinutes: 8, resetMinutes: 2, restMinutes: 0 }, {}), undefined); assert.equal(s.event.name, 'Cup'); assert.match(s.activity[0].message, /settings updated/);
   const fresh = actions.reset.run(s, { confirm: 'RESET' }, {}); assert.equal(fresh.teams.length, 0); assert.equal(fresh.event.name, 'Cup');
+});
+test('desk roles: admins do everything, officials all but admin actions, the one-job roles only their job', () => {
+  const who = (role, boards = []) => ({ name: role, role, boards });
+  for (const [name, action] of Object.entries(actions)) {
+    assert.equal(refusal(action, who('admin')), '', name);
+    assert.equal(refusal(action, who('official')), action.admin ? 'Only an event admin can do this.' : '', name);
+    assert.equal(refusal(action, who('official'), true), '', `${name}: officials try everything in practice`);
+  }
+  const allowed = role => Object.keys(actions).filter(name => !refusal(actions[name], who(role), true)).sort();
+  assert.deepEqual(allowed('checkin'), ['checkin']);
+  assert.deepEqual(allowed('lunch'), ['serve-lunch']);
+  assert.deepEqual(allowed('umpire'), ['board-ready', 'next-round', 'round-winner', 'start', 'undo-round']);
+  assert.match(refusal(actions.assign, who('umpire')), /Umpire role/); assert.match(refusal(actions.draw, who('lunch')), /Only an event admin/);
+
+  const s = seedDemo(), umpire = who('umpire', [1, 3]);
+  checkBoard(s, { id: 'M01' }, umpire); checkBoard(s, { board: '3' }, umpire); checkBoard(s, { id: 'M02' }, who('official'));
+  assert.throws(() => checkBoard(s, { id: 'M02' }, umpire), /isn’t assigned to you/); assert.throws(() => checkBoard(s, { board: 4 }, umpire), /isn’t assigned to you/);
+  assert.throws(() => checkBoard(s, { id: 'M99' }, umpire), /isn’t assigned to you/);
+});
+test('the one-job roles see no contact numbers or payment details; ID details only at check-in', () => {
+  const s = emptyState(); s.event.paymentRequired = true; s.event.upiQr = 'x';
+  const [t] = addTeams(s, { ...centre(0), adults: true, teams: [{ name: 'A', players: [player('P1', '9111111111'), player('P2', '9222222222')] }, { name: 'B', players: [player('P3'), player('P4')] }], coordinator: { name: 'Fr. C', mobile: '9900000000' }, payment: { txnRef: 'UTR123456' } });
+  for (const role of ['checkin', 'lunch', 'umpire']) {
+    const seen = staffTeam(t, role), text = JSON.stringify(seen);
+    for (const secret of ['9111111111', '9900000000', 'UTR123456']) assert.ok(!text.includes(secret), `${role} sees no ${secret}`);
+    assert.equal(seen.checkinToken, t.checkinToken); assert.deepEqual(seen.group, { id: t.group.id, size: 2 });
+    assert.equal(seen.players[0].idLast4, role === 'checkin' ? '1234' : undefined);
+  }
+  assert.equal(teamsFor(s.teams, 'official'), s.teams); assert.equal(teamsFor(s.teams, 'admin'), s.teams);
 });

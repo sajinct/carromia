@@ -56,18 +56,26 @@ test('officials function: admins manage officials; everyone else is refused; no 
   res = await call('token-u1', { action: 'add', email: ' Priya@Example.org ', name: 'Priya Desk', role: 'official' });
   assert.equal(res.status, 200); assert.equal(res.body.official.email, 'priya@example.org'); assert.ok(res.body.password.length >= 10);
   const priya = db.users.find(u => u.email === 'priya@example.org'); assert.equal(priya.password, res.body.password);
-  assert.deepEqual(db.officials.find(o => o.user_id === priya.id), { user_id: priya.id, name: 'Priya Desk', role: 'official', created_at: '4' });
+  assert.deepEqual(db.officials.find(o => o.user_id === priya.id), { user_id: priya.id, name: 'Priya Desk', role: 'official', boards: [], created_at: '4' });
 
   // Adding an existing account keeps its password unless a new one is given.
   res = await call('token-u1', { action: 'add', email: 'omar@example.org', name: 'Omar O.', role: 'admin' });
   assert.equal(res.body.password, null); assert.equal(db.users.find(u => u.id === 'u2').password, 'official-pass'); assert.equal(db.officials.find(o => o.user_id === 'u2').role, 'admin');
 
-  for (const [body, message] of [[{ action: 'add', email: 'bad', name: 'X', role: 'official' }, /valid email/], [{ action: 'add', email: 'x@y.org', name: ' ', role: 'official' }, /name/], [{ action: 'add', email: 'x@y.org', name: 'X', role: 'owner' }, /admin or official/], [{ action: 'add', email: 'x@y.org', name: 'X', role: 'official', password: 'short' }, /8 characters/], [{ action: 'nope' }, /Unknown action/]]) {
+  for (const [body, message] of [[{ action: 'add', email: 'bad', name: 'X', role: 'official' }, /valid email/], [{ action: 'add', email: 'x@y.org', name: ' ', role: 'official' }, /name/], [{ action: 'add', email: 'x@y.org', name: 'X', role: 'owner' }, /Choose a role/], [{ action: 'add', email: 'x@y.org', name: 'X', role: 'umpire' }, /umpire’s boards/], [{ action: 'add', email: 'x@y.org', name: 'X', role: 'umpire', boards: [5] }, /umpire’s boards/], [{ action: 'add', email: 'x@y.org', name: 'X', role: 'official', password: 'short' }, /8 characters/], [{ action: 'nope' }, /Unknown action/]]) {
     res = await call('token-u1', body); assert.equal(res.status, 400); assert.match(res.body.message, message);
   }
 
   res = await call('token-u1', { action: 'update', id: priya.id, role: 'admin', name: 'Priya D' });
-  assert.equal(res.status, 200); assert.deepEqual({ ...db.officials.find(o => o.user_id === priya.id), created_at: undefined }, { user_id: priya.id, name: 'Priya D', role: 'admin', created_at: undefined });
+  assert.equal(res.status, 200); assert.deepEqual({ ...db.officials.find(o => o.user_id === priya.id), created_at: undefined }, { user_id: priya.id, name: 'Priya D', role: 'admin', boards: [], created_at: undefined });
+  // An umpire runs the boards chosen for them; changing their role clears the boards.
+  res = await call('token-u1', { action: 'update', id: priya.id, role: 'umpire', boards: [3, '1', 3] });
+  assert.equal(res.status, 200); assert.deepEqual(db.officials.find(o => o.user_id === priya.id).boards, [1, 3]);
+  res = await call('token-u1', { action: 'list' }); assert.deepEqual(res.body.officials.find(o => o.id === priya.id).boards, [1, 3]);
+  res = await call('token-u1', { action: 'update', id: priya.id, name: 'Priya Umpire' }); assert.deepEqual(db.officials.find(o => o.user_id === priya.id).boards, [1, 3], 'a new name keeps the boards');
+  res = await call('token-u1', { action: 'update', id: priya.id, role: 'lunch', boards: [2] }); assert.deepEqual(db.officials.find(o => o.user_id === priya.id).boards, []);
+  res = await call('token-u1', { action: 'add', email: 'uma@example.org', name: 'Uma', role: 'umpire', boards: [2] });
+  assert.equal(res.status, 200); assert.deepEqual(res.body.official.boards, [2]); assert.equal(db.officials.find(o => o.user_id === res.body.official.id).role, 'umpire');
   res = await call('token-u1', { action: 'update', id: 'u1', role: 'official' }); assert.equal(res.status, 400); assert.match(res.body.message, /own admin role/);
 
   res = await call('token-u1', { action: 'reset-password', id: priya.id });
@@ -79,6 +87,6 @@ test('officials function: admins manage officials; everyone else is refused; no 
   assert.equal(res.status, 200); assert.ok(!db.users.some(u => u.id === priya.id)); assert.ok(!db.officials.some(o => o.user_id === priya.id));
   res = await call('token-u1', { action: 'remove', id: priya.id }); assert.equal(res.status, 404);
 
-  assert.deepEqual(db.audit.map(a => `${a.actor_name}:${a.action}`), ['Asha Admin:officials:add', 'Asha Admin:officials:add', 'Asha Admin:officials:update', 'Asha Admin:officials:reset-password', 'Asha Admin:officials:reset-password', 'Asha Admin:officials:remove']);
+  assert.deepEqual(db.audit.map(a => `${a.actor_name}:${a.action}`), ['Asha Admin:officials:add', 'Asha Admin:officials:add', 'Asha Admin:officials:update', 'Asha Admin:officials:update', 'Asha Admin:officials:update', 'Asha Admin:officials:update', 'Asha Admin:officials:add', 'Asha Admin:officials:reset-password', 'Asha Admin:officials:reset-password', 'Asha Admin:officials:remove']);
   assert.ok(!JSON.stringify(db.audit).includes('chosen-pass-1'), 'passwords never reach the audit log');
 });

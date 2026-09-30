@@ -8,7 +8,8 @@
 // Plain JavaScript on purpose, so it can be pasted into the dashboard editor and tested in Node.
 
 const cors = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'authorization, apikey, content-type, x-client-info', 'Access-Control-Allow-Methods': 'POST, OPTIONS' };
-const roles = ['admin', 'official'];
+// As in lib/tournament.mjs: admins, officials, and the one-job roles. Umpires run the boards listed in `boards`.
+const roles = ['admin', 'official', 'checkin', 'lunch', 'umpire'];
 
 function fail(status, message) { throw Object.assign(new Error(message), { status }); }
 function newPassword() { const bytes = crypto.getRandomValues(new Uint8Array(9)); return btoa(String.fromCharCode(...bytes)).replace(/\+/g, 'x').replace(/\//g, 'y').replace(/=+$/, ''); }
@@ -39,21 +40,28 @@ export async function handle(req, env, fetchImpl = fetch) {
     try { input = await req.json(); } catch { fail(400, 'Invalid request.'); }
     const audit = (action, detail) => call('/rest/v1/audit_log', { method: 'POST', headers: { Prefer: 'return=minimal' }, body: { actor_id: me.id, actor_name: mine.name, action: `officials:${action}`, detail } }).catch(() => {});
     const users = async () => (await call('/auth/v1/admin/users?page=1&per_page=1000')).users || [];
-    const officialFor = async id => (await call(`/rest/v1/officials?user_id=eq.${encodeURIComponent(id)}&select=user_id,name,role`))[0] || fail(404, 'Official not found.');
+    const officialFor = async id => (await call(`/rest/v1/officials?user_id=eq.${encodeURIComponent(id)}&select=user_id,name,role,boards`))[0] || fail(404, 'Official not found.');
     const cleanName = value => { const name = String(value ?? '').trim().slice(0, 80); if (!name) fail(400, 'Enter the official’s name.'); return name; };
-    const cleanRole = value => { if (!roles.includes(value)) fail(400, 'Choose admin or official.'); return value; };
+    const cleanRole = value => { if (!roles.includes(value)) fail(400, 'Choose a role.'); return value; };
+    // An umpire's boards, 1 to 4 (at least one); every other role has none.
+    const cleanBoards = (role, value) => {
+      if (role !== 'umpire') return [];
+      const boards = [...new Set((Array.isArray(value) ? value : String(value ?? '').split(',')).map(b => String(b).trim()).filter(Boolean).map(Number))].sort((a, b) => a - b);
+      if (!boards.length || boards.some(b => ![1, 2, 3, 4].includes(b))) fail(400, 'Choose the umpire’s boards, from 1 to 4.');
+      return boards;
+    };
     const cleanPassword = value => { const password = String(value ?? '').trim(); if (password && password.length < 8) fail(400, 'Passwords need at least 8 characters.'); return password; };
 
     switch (input.action) {
       case 'list': {
-        const [officials, accounts] = await Promise.all([call('/rest/v1/officials?select=user_id,name,role,created_at&order=created_at'), users()]);
+        const [officials, accounts] = await Promise.all([call('/rest/v1/officials?select=user_id,name,role,boards,created_at&order=created_at'), users()]);
         const byId = new Map(accounts.map(u => [u.id, u]));
-        return reply(200, { officials: officials.map(o => ({ id: o.user_id, name: o.name, role: o.role, email: byId.get(o.user_id)?.email || '', lastSignIn: byId.get(o.user_id)?.last_sign_in_at || null, you: o.user_id === me.id })) });
+        return reply(200, { officials: officials.map(o => ({ id: o.user_id, name: o.name, role: o.role, boards: o.boards || [], email: byId.get(o.user_id)?.email || '', lastSignIn: byId.get(o.user_id)?.last_sign_in_at || null, you: o.user_id === me.id })) });
       }
       case 'add': {
         const email = String(input.email ?? '').trim().toLowerCase();
         if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) fail(400, 'Enter a valid email address.');
-        const name = cleanName(input.name), role = cleanRole(input.role);
+        const name = cleanName(input.name), role = cleanRole(input.role), boards = cleanBoards(role, input.boards);
         let password = cleanPassword(input.password), user = (await users()).find(u => u.email?.toLowerCase() === email);
         if (user) {
           // Existing account: keep its password unless a new one was given.
@@ -62,16 +70,17 @@ export async function handle(req, env, fetchImpl = fetch) {
           password ||= newPassword();
           user = await call('/auth/v1/admin/users', { method: 'POST', body: { email, password, email_confirm: true } });
         }
-        await call('/rest/v1/officials?on_conflict=user_id', { method: 'POST', headers: { Prefer: 'resolution=merge-duplicates,return=minimal' }, body: { user_id: user.id, name, role } });
-        await audit('add', { email, name, role });
-        return reply(200, { official: { id: user.id, name, role, email }, password: password || null });
+        await call('/rest/v1/officials?on_conflict=user_id', { method: 'POST', headers: { Prefer: 'resolution=merge-duplicates,return=minimal' }, body: { user_id: user.id, name, role, boards } });
+        await audit('add', { email, name, role, boards });
+        return reply(200, { official: { id: user.id, name, role, boards, email }, password: password || null });
       }
       case 'update': {
         const current = await officialFor(input.id);
         const name = input.name === undefined ? current.name : cleanName(input.name), role = input.role === undefined ? current.role : cleanRole(input.role);
+        const boards = cleanBoards(role, input.boards === undefined ? current.boards : input.boards);
         if (current.user_id === me.id && role !== 'admin') fail(400, 'You can’t remove your own admin role. Ask another admin.');
-        await call(`/rest/v1/officials?user_id=eq.${encodeURIComponent(current.user_id)}`, { method: 'PATCH', headers: { Prefer: 'return=minimal' }, body: { name, role } });
-        await audit('update', { id: current.user_id, name, role });
+        await call(`/rest/v1/officials?user_id=eq.${encodeURIComponent(current.user_id)}`, { method: 'PATCH', headers: { Prefer: 'return=minimal' }, body: { name, role, boards } });
+        await audit('update', { id: current.user_id, name, role, boards });
         return reply(200, { ok: true });
       }
       case 'reset-password': {

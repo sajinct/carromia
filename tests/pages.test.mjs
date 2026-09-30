@@ -26,7 +26,9 @@ function fakeSupabase() {
   const sample = seedDemo(); sample.event.registrationDeadline = '';
   const db = { rows: { main: { version: 1, state: sample } }, pub: { main: { version: 1, state: publicState(sample) } }, saves: [], photos: [], proofs: [], files: new Map(), raceOnce: false };
   Object.defineProperty(db, 'public', { get: () => db.pub.main });
-  const users = { 'asha@example.org': { id: 'u1', password: 'admin-pass', official: { name: 'Asha Admin', role: 'admin' } }, 'omar@example.org': { id: 'u2', password: 'official-pass', official: { name: 'Omar Official', role: 'official' } } };
+  const users = { 'asha@example.org': { id: 'u1', password: 'admin-pass', official: { name: 'Asha Admin', role: 'admin', boards: [] } }, 'omar@example.org': { id: 'u2', password: 'official-pass', official: { name: 'Omar Official', role: 'official', boards: [] } },
+    'cara@example.org': { id: 'u4', password: 'checkin-pass', official: { name: 'Cara Checkin', role: 'checkin', boards: [] } }, 'lena@example.org': { id: 'u5', password: 'lunch-pass', official: { name: 'Lena Lunch', role: 'lunch', boards: [] } }, 'uma@example.org': { id: 'u6', password: 'umpire-pass', official: { name: 'Uma Umpire', role: 'umpire', boards: [1] } } };
+  db.users = users;
   const byToken = token => Object.values(users).find(u => `token-${u.id}` === token);
   const reply = (status, value) => new Response(value === undefined ? null : JSON.stringify(value), { status, headers: { 'Content-Type': 'application/json' } });
   db.fetch = async (href, init = {}) => {
@@ -61,8 +63,8 @@ function fakeSupabase() {
         return reply(200, body.p_ids.filter(i => db.pub[i]).map(i => ({ id: i, version: db.pub[i].version, practiceOff: db.pub[i].state.event?.practiceOff ?? false, announced: true })));
       case '/rest/v1/tournament': return reply(200, caller?.official && db.rows[id] ? [structuredClone(db.rows[id])] : []);
       case '/rest/v1/officials': { const who = service ? Object.values(users).find(u => u.id === eq('user_id')) : caller; return reply(200, who ? [who.official] : []); }
-      case '/rest/v1/player_photos': return reply(200, caller?.official ? db.photos.filter(p => p.event === eq('event') && (!eq('team_id') || p.team_id === eq('team_id')) && (!eq('player') || p.player === Number(eq('player')))) : []);
-      case '/rest/v1/payment_proofs': return reply(200, caller?.official ? db.proofs.filter(p => p.event === eq('event')) : []);
+      case '/rest/v1/player_photos': return reply(200, ['admin', 'official', 'checkin'].includes(caller?.official.role) ? db.photos.filter(p => p.event === eq('event') && (!eq('team_id') || p.team_id === eq('team_id')) && (!eq('player') || p.player === Number(eq('player')))) : []);
+      case '/rest/v1/payment_proofs': return reply(200, ['admin', 'official'].includes(caller?.official.role) ? db.proofs.filter(p => p.event === eq('event')) : []);
       case '/rest/v1/rpc/unreferenced_files': {
         const used = new Set([...db.photos.flatMap(p => [p.path, thumbPath(p.path)]), ...db.proofs.map(p => p.path)]);
         return reply(200, [...db.files.keys()].filter(k => k.startsWith('team-files/') && !used.has(k.slice(11))).map(k => ({ bucket: 'team-files', name: k.slice(11) })));
@@ -129,7 +131,7 @@ test('live Pages runtime: public view, official sign-in, roles, conflict retry, 
 
   await remoteApi('login', { email: 'Omar@example.org ', password: 'official-pass' });
   state = await remoteApi('state');
-  assert.equal(state.isAdmin, true); assert.deepEqual(state.user, { name: 'Omar Official', role: 'official' }); assert.equal(state.teams[0].players[0].mobile, '9000000000'); assert.ok(state.teams[0].checkinToken, 'officials can print a team’s form again'); assert.equal(state.practice, false);
+  assert.equal(state.isAdmin, true); assert.deepEqual(state.user, { name: 'Omar Official', role: 'official', boards: [] }); assert.equal(state.teams[0].players[0].mobile, '9000000000'); assert.ok(state.teams[0].checkinToken, 'officials can print a team’s form again'); assert.equal(state.practice, false);
   await remoteApi('unassign', { id: 'M01' }); await remoteApi('assign', { id: 'M05', board: 1 }); await remoteApi('start', { id: 'M05' });
   assert.equal(db.rows.main.state.matches.find(m => m.id === 'M05').status, 'playing');
   assert.equal(db.public.state.matches.find(m => m.id === 'M05').status, 'playing'); assert.ok(!JSON.stringify(db.public).includes('9000000000'), 'public copy has no mobiles');
@@ -228,6 +230,55 @@ test('live Pages runtime: public view, official sign-in, roles, conflict retry, 
   assert.deepEqual(db.saves.map(s => `${s.event}:${s.by}:${s.action}`), ['main:Omar Official:unassign', 'main:Omar Official:assign', 'main:Omar Official:start', 'main:Omar Official:checkin', 'main:Asha Admin:reset',
     'practice:Omar Official:unassign', 'practice:Omar Official:assign', 'practice:Omar Official:reset', 'practice:Omar Official:demo', 'main:Asha Admin:practice-mode', 'main:Asha Admin:practice-mode', 'main:Asha Admin:remove-team']);
   assert.equal((await remoteApi('state')).isAdmin, false);
+});
+test('live Pages runtime: check-in, lunch and umpire accounts do only their own job', async t => {
+  const db = fakeSupabase(), memory = new Map(), realFetch = globalThis.fetch;
+  globalThis.localStorage = { getItem: key => memory.get(key) ?? null, setItem: (key, value) => memory.set(key, value), removeItem: key => memory.delete(key) };
+  globalThis.fetch = db.fetch; globalThis.location = { origin: 'https://sajinct.github.io', pathname: '/carromia/', search: '' };
+  t.after(() => { globalThis.fetch = realFetch; delete globalThis.localStorage; delete globalThis.location; });
+  const { remoteApi } = await import('../dist/runtime.js');
+  const as = (email, password) => remoteApi('logout').then(() => remoteApi('login', { email, password }));
+  // The sample has M01 to M04 called to boards 1 to 4, every team checked in, and lunch booked by most teams.
+  db.rows.main.state.event.lunchCoupons = true;
+  const team = db.rows.main.state.teams.find(t => t.lunch), token = team.checkinToken;
+
+  await as('cara@example.org', 'checkin-pass');
+  let state = await remoteApi('state');
+  assert.deepEqual(state.user, { name: 'Cara Checkin', role: 'checkin', boards: [] });
+  assert.equal(state.teams[0].players[0].mobile, undefined, 'no contact numbers'); assert.equal(state.teams[0].players[0].idType, 'Aadhaar', 'ID details to compare at check-in');
+  assert.ok(state.teams[0].checkinToken, 'a scanned QR code finds its team');
+  await remoteApi('photos');
+  await assert.rejects(remoteApi('payment-proofs'), /Payment screenshots are for/);
+  await remoteApi('checkin', { token });
+  for (const [path, input] of [['serve-lunch', { token }], ['confirm-payment', { id: team.id }], ['unassign', { id: 'M01' }], ['draw', {}]]) await assert.rejects(remoteApi(path, input), /Check-in desk role|Only an event admin/, path);
+
+  await as('lena@example.org', 'lunch-pass');
+  state = await remoteApi('state');
+  assert.equal(state.teams[0].players[0].idType, undefined); assert.ok(state.teams[0].checkinToken, 'a scanned coupon finds its team');
+  await assert.rejects(remoteApi('photos'), /Player photos are for/);
+  await remoteApi('serve-lunch', { token }); assert.equal(db.rows.main.state.teams.find(t => t.id === team.id).lunchServed, 1);
+  await remoteApi('serve-lunch', { token, undo: true }); assert.equal(db.rows.main.state.teams.find(t => t.id === team.id).lunchServed, 0);
+  await assert.rejects(remoteApi('checkin', { token }), /Lunch counter role/);
+
+  // An umpire on board 1 runs the match there, and nothing on board 2.
+  await as('uma@example.org', 'umpire-pass');
+  assert.deepEqual((await remoteApi('state')).user, { name: 'Uma Umpire', role: 'umpire', boards: [1] });
+  await assert.rejects(remoteApi('start', { id: 'M02' }), /isn’t assigned to you/);
+  await assert.rejects(remoteApi('unassign', { id: 'M01' }), /Umpire role/);
+  await assert.rejects(remoteApi('payment-proofs'), /Payment screenshots are for/);
+  await remoteApi('start', { id: 'M01' });
+  const m = db.rows.main.state.matches.find(m => m.id === 'M01');
+  await remoteApi('round-winner', { id: 'M01', winner: m.teamA }); await remoteApi('next-round', { id: 'M01' }); await remoteApi('round-winner', { id: 'M01', winner: m.teamA });
+  assert.equal(db.rows.main.state.matches.find(m => m.id === 'M01').status, 'completed');
+  assert.equal(db.rows.main.state.matches.find(m => m.id === 'M01').official, 'Uma Umpire');
+  await remoteApi('board-ready', { board: 1 });
+  await assert.rejects(remoteApi('board-ready', { board: 2 }), /isn’t assigned to you/);
+
+  // A change an admin makes to the umpire's boards applies on their next refresh.
+  db.users['uma@example.org'].official.boards = [2];
+  assert.deepEqual((await remoteApi('state')).user.boards, [2]);
+  await assert.rejects(remoteApi('board-ready', { board: 1 }), /isn’t assigned to you/);
+  assert.deepEqual(db.saves.map(s => `${s.by}:${s.action}`), ['Cara Checkin:checkin', 'Lena Lunch:serve-lunch', 'Lena Lunch:serve-lunch', 'Uma Umpire:start', 'Uma Umpire:round-winner', 'Uma Umpire:next-round', 'Uma Umpire:round-winner', 'Uma Umpire:board-ready']);
 });
 test('live Pages runtime: a parish registers several teams at once; the coordinator downloads every form', async t => {
   const db = fakeSupabase(), memory = new Map(), realFetch = globalThis.fetch;

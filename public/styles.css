@@ -347,3 +347,4 @@ legend span .icon{width:12px;height:12px;vertical-align:-2px}
 .group-teams li>strong{flex-shrink:0;color:var(--green);letter-spacing:1px;font-size:13px}
 .group-teams span small{display:block;color:var(--muted);font-size:12px;margin-top:2px}
 td small.group-tag{color:var(--green-2);font-weight:600}
+.board-picks{display:flex;flex-wrap:wrap;gap:0 20px}.board-picks[hidden]{display:none}.board-picks legend{width:100%;margin-bottom:10px}.board-picks .checkbox-label{margin-bottom:10px}

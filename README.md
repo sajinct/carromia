@@ -29,7 +29,8 @@ https://sajinct.github.io/carromia/ is the live event site. The static app talks
 6. **Moving pictures saved before Storage was used** (once, only if teams registered before `20261005000000_carromia_storage.sql`): with `SUPABASE_URL` and `SUPABASE_SECRET_KEY` in `.env`, run `npm run move:images`. It copies each old photo, screenshot and UPI QR code into Storage and records its path (old photos keep their original small size). When it reports nothing left to move, run `supabase/migrations/20261006000000_carromia_storage_cleanup.sql` to drop the old picture columns.
    Deploy order for an existing site: the storage migration, then the `registration` function, then the new site build, then `npm run move:images`, then the cleanup migration.
 7. **Live updates:** run `supabase/migrations/20261008000000_carromia_realtime.sql` (after `20261007000000_carromia_group_registration.sql`), then `supabase/migrations/20261009000000_carromia_realtime_versions.sql`. Whenever the public copy changes, the database sends a Realtime message `changed` with just `{ version, practiceOff }` on the public channel `tournament:main` or `tournament:practice`. Open screens then fetch the event right away, rather than checking every few seconds. On joining the channel, a screen calls `tournament_versions()` once. It returns the current versions and confirms the database sends these messages, so the screen stops checking straight away. Keep **Project Settings → Realtime → Allow public access** on (the default). Without the migrations, or while a screen's connection is down, screens check the version every 10 seconds. Each visible tab holds one Realtime connection (the Free plan allows 200 at once), and hidden tabs let go of theirs.
-8. Recommended: **Authentication → Sign In / Providers → turn off "Allow new users to sign up"**, so only accounts you create exist.
+8. **Check-in, lunch and umpire accounts:** run `supabase/migrations/20261010000000_carromia_staff_roles.sql` (after `20261009000000_carromia_realtime_versions.sql`), then redeploy the `officials` function and the site. See **Desk roles** below.
+9. Recommended: **Authentication → Sign In / Providers → turn off "Allow new users to sign up"**, so only accounts you create exist.
 
 ### Registration, practice mode and team removal
 
@@ -40,6 +41,16 @@ https://sajinct.github.io/carromia/ is the live event site. The static app talks
 - **Removing a team** (admins, real event, before the draw): Teams → Remove. The team and its contact details are deleted and its ID is never reused. After the draw, teams can’t be removed because the bracket depends on them.
 - **Walkover / no-show** (admins): Match control → queue → **Walkover**. Choose the team that advances and a reason; the match is completed without play, no check-in or rest period is needed, and later rounds update. **Results → Undo walkover** puts it back in the queue while the next round hasn’t been called.
 - **Correcting a result** (admins): Results → **Correct**. Choose the winner of each round, in order, up to the round that decided the match; the winner is worked out again and later rounds are re-derived. Possible only until the winner’s next match is called; the original time is kept and the result is marked *Corrected*.
+- **Desk roles.** On the Officials page, each account gets one of five roles:
+  - **Admin**: everything, including settings, the draw, corrections, walkovers and officials.
+  - **Official**: check-in, payments, lunch, calling matches to boards, and running matches and results.
+  - **Check-in desk**: checks teams in, or takes a check-in back, from the team list or a scanned QR code. Nothing else, and no payment confirmations.
+  - **Lunch counter**: serves booked lunches, or undoes one, from the team list or a scanned coupon. Nothing else.
+  - **Umpire**: runs the matches on the boards an admin ticks for them (Edit → Umpire’s boards). They start a match, mark each round’s winner, start the next round, take back a round and mark the board ready. They don’t call matches or send them back to the queue; the desk does that.
+
+  Each of the last three sees only its own page. They see no contact numbers or payment details. Only the check-in desk sees player photos and ID details, and none of them sees payment screenshots. The database refuses any change outside the role’s job on the real event. A role or board change applies when that person’s desk next refreshes. In practice mode these accounts rehearse only their own job.
+
+  **Known limit:** on the live site the desk runs the rules in the browser, so these accounts still download the event’s private data, including mobile numbers, ID last-4 digits and payment references, even though the app doesn’t show it. Photos and payment screenshots are locked by the database. Hiding the rest would need check-in, lunch and scoring to move into database functions.
 - **Starting over** (admins): Settings → Start a fresh event → type `RESET`. It clears teams, matches and results, keeps the event details and reopens registration.
 
 ### Preview the build locally
@@ -104,11 +115,12 @@ When `SUPABASE_URL` and `SUPABASE_SECRET_KEY` are set, the server stores the eve
 
 1. **Create the tables.** In the Supabase dashboard open **SQL Editor**, paste `supabase/migrations/20260929000000_carromia_init.sql`, and run it. (With the Supabase CLI: `supabase link --project-ref vzxcqpgwvknonkhjinuk` then `supabase db push`.)
 2. **Add your keys.** Copy `.env.example` to `.env` and paste the **Secret key** from Project Settings → API Keys. `.env` is git-ignored; never commit it or put the secret key in browser code.
-3. **Add officials.** Admins can change settings, create the draw, reset and download backups. Officials can check in teams, run boards and record results.
+3. **Add officials.** Admins can change settings, create the draw, reset and download backups. Officials can check in teams, run boards and record results. Check-in, lunch and umpire accounts do only that job (see **Desk roles**); an umpire is given their boards.
 
    ```powershell
    npm run add-official -- asha@example.org "Asha Admin" admin
    npm run add-official -- omar@example.org "Omar Official" official
+   npm run add-official -- uma@example.org "Uma Umpire" umpire 1,2
    ```
 
    New accounts get a temporary password printed once; officials change it in the desk under **Change password**. Re-running the command changes the name or role of an existing official.
