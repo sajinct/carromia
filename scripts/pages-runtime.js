@@ -163,25 +163,31 @@ export async function remoteApi(path, input = {}) {
   await syncClock();
   if (path === 'login') return signIn(input);
   if (path === 'change-password') return changePassword(input);
-  // A team's registration form, for whoever knows its primary player's mobile number; the database
-  // checks the number and counts wrong tries.
-  if (path === 'team-form') {
-    const reply = await registration({ action: 'team-form', event: eventId(), id: String(input.id ?? '').trim().toUpperCase(), mobile: String(input.mobile ?? '') });
-    fail(reply.error, reply.error);
-    const { team: { checkinToken, ...team }, photos } = reply;
+  // A team's registration form, for whoever knows its primary player's or parish coordinator's
+  // mobile number, or every form in a group for the coordinator; the database checks the number and
+  // counts wrong tries.
+  const formFor = async ({ team: { checkinToken, ...team }, photos }) => {
     const [{ qr }, { qr: lunchQr }] = await Promise.all([qrCode(teamLink(checkinToken, '/checkin')), team.lunch ? qrCode(teamLink(checkinToken, '/lunch')) : { qr: '' }].map(p => Promise.resolve(p).catch(() => ({ qr: '' }))));
     return { team, photos: photos || [], qr, lunchQr };
+  };
+  if (path === 'team-form' || path === 'group-form') {
+    const reply = await registration({ action: path, event: eventId(), id: String(input.id ?? '').trim().toUpperCase(), mobile: String(input.mobile ?? '') });
+    fail(reply.error, reply.error);
+    return path === 'team-form' ? formFor(reply) : { forms: await Promise.all(reply.teams.map(formFor)) };
   }
   if (path === 'logout') { const token = readSession()?.access_token; writeSession(null); if (token) request('/auth/v1/logout', { method: 'POST', token }).catch(() => {}); return { ok: true }; }
   if (path === 'register') {
-    const players = Array.isArray(input.players) ? input.players : [];
+    // One team, or several from one parish paid for together (input.teams).
+    const teams = Array.isArray(input.teams) ? input.teams : [input];
     // The database checks the rest; the forane / parish pair is checked against the register here.
     const centre = findCentre(input.forane, input.parish, input.centreType);
     fail(!centre, 'Choose your forane or zone, then your parish or centre from the list.');
-    fail(input.adults !== true, 'Confirm that both players are 18 or older.');
-    playerPhotos(input);
+    fail(input.adults !== true, teams.length > 1 ? 'Confirm that all players are 18 or older.' : 'Confirm that both players are 18 or older.');
+    teams.forEach(t => playerPhotos(t));
     const payment = { txnRef: String(input.payment?.txnRef ?? ''), screenshot: paymentProof(input) };
-    return registration({ action: 'register', p_name: input.name, p_forane: centre.group, p_parish: centre.name, p_centre_type: centre.type, p_players: players, p_primary: Number(input.primaryContact) === 1 ? 1 : 0, p_event: eventId(), p_lunch: Number(input.lunch) || 0, p_adults: true, p_payment: payment });
+    return registration({ action: 'register', p_forane: centre.group, p_parish: centre.name, p_centre_type: centre.type, p_event: eventId(), p_adults: true, p_payment: payment,
+      p_coordinator: teams.length > 1 ? { name: String(input.coordinator?.name ?? ''), mobile: String(input.coordinator?.mobile ?? '') } : null,
+      p_teams: teams.map(t => ({ name: t.name, players: Array.isArray(t.players) ? t.players : [], primaryContact: Number(t.primaryContact) === 1 ? 1 : 0, lunch: Number(t.lunch) || 0 })) });
   }
 
   const user = await official();

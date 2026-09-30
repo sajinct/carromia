@@ -15,9 +15,11 @@ const clock = time => time ? new Date(`2000-01-01T${time}`).toLocaleTimeString('
 // Returns the jsPDF document; call .save(name) or .output('blob') on it.
 // logos: optional PNG/JPEG data URLs (the Mary Matha Church and Diocese of Mandya emblems).
 // lunchQr: the team's lunch-counter QR code, printed on its lunch coupons.
-export function registrationPdf(jsPDF, { team, event, qr = '', lunchQr = '', photos = [], logos = [] }) {
-  const doc = new jsPDF({ unit: 'mm', format: 'a4' });
-  doc.setProperties({ title: `CARROMIA ${event.year} registration ${team.id}`, subject: `${team.name} - ${team.parish}`, creator: 'CARROMIA' });
+// doc: an existing document to add this team's pages to; rules: false leaves out the rule book.
+export function registrationPdf(jsPDF, { team, event, qr = '', lunchQr = '', photos = [], logos = [], doc: into = null, rules = true, rulesLabel = '' }) {
+  const doc = into ?? new jsPDF({ unit: 'mm', format: 'a4' });
+  if (into) doc.addPage(); else doc.setProperties({ title: `CARROMIA ${event.year} registration ${team.id}`, subject: `${team.name} - ${team.parish}`, creator: 'CARROMIA' });
+  const firstPage = doc.getNumberOfPages();
   const color = (c, kind = 'text') => kind === 'text' ? doc.setTextColor(...c) : kind === 'fill' ? doc.setFillColor(...c) : doc.setDrawColor(...c);
   const font = (size, style = 'normal', c = ink) => { doc.setFont('helvetica', style); doc.setFontSize(size); color(c); };
   const text = (value, x, y, options) => doc.text(Array.isArray(value) ? value : String(value ?? ''), x, y, options);
@@ -84,8 +86,12 @@ export function registrationPdf(jsPDF, { team, event, qr = '', lunchQr = '', pho
 
   // Lunch and fee.
   y += tight ? 5 : 5.5; font(8.5, 'normal');
-  const paid = team.payment ? `${money(team.payment.amount)} paid online${team.payment.txnRef ? ` (UTR ${team.payment.txnRef})` : ''}, confirmed` : `${money(event.entryFee ?? 500)} per team, paid at the tournament desk`;
-  text(`Lunch booked: ${team.lunch ? `${team.lunch === 2 ? 'both players' : '1 player'}` : 'none'}     |     Entry fee: ${paid}`, M, y);
+  // A group's one payment covers all its teams.
+  const forTeams = team.payment?.teams > 1 ? ` for ${team.payment.teams} teams (group ${team.group?.id ?? ''})` : '';
+  const paid = team.payment ? `${money(team.payment.amount)}${forTeams} paid online${team.payment.txnRef ? ` (UTR ${team.payment.txnRef})` : ''}, confirmed` : `${money(event.entryFee ?? 500)} per team, paid at the tournament desk`;
+  const feeLine = `Lunch booked: ${team.lunch ? `${team.lunch === 2 ? 'both players' : '1 player'}` : 'none'}${forTeams ? '   |   ' : '     |     '}Entry fee: ${paid}`;
+  for (let size = 8.5; size > 6.5 && doc.getTextWidth(feeLine) > W - 2 * M; size -= 0.25) font(size - 0.25, 'normal');
+  text(feeLine, M, y);
   const contacts = (event.contacts || []).map(c => `${c.name} ${c.phone}`).join('   |   ');
   if (contacts) { y += 4.8; font(8.5, 'normal', muted); text(`For queries: ${contacts}`, M, y); }
 
@@ -144,26 +150,30 @@ export function registrationPdf(jsPDF, { team, event, qr = '', lunchQr = '', pho
   }
 
   // Rule book.
-  doc.addPage(); y = pageTop('Rule book');
-  font(9, 'normal', muted);
-  const intro = doc.splitTextToSize(`CARROMIA ${event.year || ''} is an open doubles, thumbing-game knockout. Every match is ${formatText(event)}.`, W - 2 * M);
-  text(intro, M, y); y += intro.length * 4 + 4;
-  let number = 0;
-  for (const section of ruleSections) {
-    need(14); y = heading(section.title, y + 2) + 1;
-    for (const rule of section.rules) { number++; y = numbered(`${number}.`, rule, y); }
+  const rulesFrom = rules ? doc.getNumberOfPages() + 1 : Infinity;
+  if (rules) {
+    doc.addPage(); y = pageTop('Rule book');
+    font(9, 'normal', muted);
+    const intro = doc.splitTextToSize(`CARROMIA ${event.year || ''} is an open doubles, thumbing-game knockout. Every match is ${formatText(event)}.`, W - 2 * M);
+    text(intro, M, y); y += intro.length * 4 + 4;
+    let number = 0;
+    for (const section of ruleSections) {
+      need(14); y = heading(section.title, y + 2) + 1;
+      for (const rule of section.rules) { number++; y = numbered(`${number}.`, rule, y); }
+    }
+    const list = (title, lines, marker = i => `${i + 1}.`) => { need(14); y = heading(title, y + 4) + 1; lines.forEach((line, i) => { y = numbered(marker(i), line, y); }); };
+    list('Bring for registration verification', documents);
+    list('Good to know', [`Entry fee is ${money(event.entryFee ?? 500)} per team.`, ...(event.registrationDeadline ? [`Last date for registration is ${longDate(event.registrationDeadline)}.`] : []), `Up to ${event.maxTeamsPerParish ?? 4} teams can register from one parish.`, ...goodToKnow], () => '-');
+    list('The day', timeline.map(([at, what]) => `${at}   ${what}`), () => '-');
+    list('Prizes', prizes.map(p => `${p.place}: ${money(p.amount)} and a trophy`), () => '-');
   }
-  const list = (title, lines, marker = i => `${i + 1}.`) => { need(14); y = heading(title, y + 4) + 1; lines.forEach((line, i) => { y = numbered(marker(i), line, y); }); };
-  list('Bring for registration verification', documents);
-  list('Good to know', [`Entry fee is ${money(event.entryFee ?? 500)} per team.`, ...(event.registrationDeadline ? [`Last date for registration is ${longDate(event.registrationDeadline)}.`] : []), `Up to ${event.maxTeamsPerParish ?? 4} teams can register from one parish.`, ...goodToKnow], () => '-');
-  list('The day', timeline.map(([at, what]) => `${at}   ${what}`), () => '-');
-  list('Prizes', prizes.map(p => `${p.place}: ${money(p.amount)} and a trophy`), () => '-');
 
-  // Footer on every page.
+  // Footer on every page this call added, numbered within them. rulesLabel names a rule book
+  // shared by several teams' forms.
   const pages = doc.getNumberOfPages();
-  for (let i = 1; i <= pages; i++) {
+  for (let i = firstPage; i <= pages; i++) {
     doc.setPage(i); color(line, 'draw'); doc.setLineWidth(0.3); doc.line(M, H - 12, W - M, H - 12);
-    font(7.5, 'normal', muted); text(`${event.name || 'CARROMIA'} ${event.year || ''}  |  Team ${team.id}  |  ${team.name}`, M, H - 7.5); text(`Page ${i} of ${pages}`, W - M, H - 7.5, { align: 'right' });
+    font(7.5, 'normal', muted); text(`${event.name || 'CARROMIA'} ${event.year || ''}  |  ${i >= rulesFrom && rulesLabel ? rulesLabel : `Team ${team.id}  |  ${team.name}`}`, M, H - 7.5); text(`Page ${i - firstPage + 1} of ${pages - firstPage + 1}`, W - M, H - 7.5, { align: 'right' });
   }
   return doc;
 
@@ -180,4 +190,13 @@ export function registrationPdf(jsPDF, { team, event, qr = '', lunchQr = '', pho
     font(9, 'bold', green); text(marker, M + 1, at); font(9); text(lines, M + 8, at);
     return at + lines.length * 4 + 1.6;
   }
+}
+// Every team's form in a group registration, one after another, then the rule book once.
+// forms: [{ team, qr, lunchQr, photos }], in registration order.
+export function groupRegistrationPdf(jsPDF, { forms, event, logos = [] }) {
+  const [first] = forms, group = first.team.group?.id ?? first.team.id;
+  let doc = null;
+  forms.forEach((form, i) => { doc = registrationPdf(jsPDF, { ...form, event, logos, doc, rules: i === forms.length - 1, rulesLabel: `Group ${group}  |  ${first.team.parish}` }); });
+  doc.setProperties({ title: `CARROMIA ${event.year} registration group ${group}`, subject: `${forms.length} teams - ${first.team.parish}`, creator: 'CARROMIA' });
+  return doc;
 }

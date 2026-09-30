@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { emptyState, addTeam, serveLunch, createDraw, assign, start, roundWinner, nextRound, undoRound, eligible, updateSettings, boardReady, removeTeam, practiceEvent, publicState, walkover, undoWalkover, correctResult, unassign, actions, practiceMode, registrationStatus, parishKey, playerPhotos, upiQrImage, seedDemo, paymentProof, confirmPayment, checkIn, isConfirmed } from '../lib/tournament.mjs';
+import { emptyState, addTeam, serveLunch, createDraw, assign, start, roundWinner, nextRound, undoRound, eligible, updateSettings, boardReady, removeTeam, practiceEvent, publicState, walkover, undoWalkover, correctResult, unassign, actions, practiceMode, registrationStatus, parishKey, playerPhotos, upiQrImage, seedDemo, paymentProof, confirmPayment, checkIn, isConfirmed, addTeams, teamForm, groupForm, groupTeams, publicTeam } from '../lib/tournament.mjs';
 import { centres, groups, findCentre } from '../public/parishes.js';
 import { centre, player, photo } from './registration-fixture.mjs';
 // A team from the i-th parish or centre of the diocese register.
@@ -86,6 +86,55 @@ test('payment at registration: pending until the desk confirms; pending teams ca
   createDraw(s, false); const drawn = s.matches.flatMap(m => [m.teamA, m.teamB]);
   assert.ok(drawn.includes(a.id) && drawn.includes(c.id) && !drawn.includes(b.id)); assert.ok(s.activity.some(x => /1 team awaiting payment left out/.test(x.message)));
   assert.equal(isConfirmed({ id: 'CAR-009' }), true, 'teams saved before payments existed count as confirmed');
+});
+test('a parish registers several teams at once, with one payment and a coordinator', () => {
+  const s = open(); Object.assign(s.event, { paymentRequired: true, upiQr: 'x', maxTeamsPerParish: 4 });
+  const where = centre(0), coordinator = { name: ' Fr. Coord ', mobile: '+91 99000 00000' }, payment = { txnRef: '412356789012', screenshot: photo };
+  const team = (name, extra = {}) => ({ name, players: entry(name).players, ...extra });
+  const group = (teams, extra = {}) => ({ ...where, adults: true, coordinator, payment, teams, ...extra });
+  // Everything is checked before anything is added.
+  assert.throws(() => addTeams(s, group([])), /at least one team/);
+  assert.throws(() => addTeams(s, group(Array.from({ length: 9 }, (_, i) => team(`T${i}`)))), /up to 8 teams/);
+  assert.throws(() => addTeams(s, group([team('One'), team('one')])), /different name: “one” is used twice/);
+  assert.throws(() => addTeams(s, group([team('One'), team('Two')], { coordinator: { name: 'Fr. Coord', mobile: '12' } })), /parish coordinator’s name and a valid mobile/);
+  assert.throws(() => addTeams(s, group([team('One'), team('Two')], { coordinator: undefined })), /parish coordinator/);
+  assert.throws(() => addTeams(s, group([team('One'), team('Two')], { adults: false })), /all players are 18 or older/);
+  assert.throws(() => addTeams(s, group([team('One'), { name: 'Two', players: [entry('x').players[0]] }])), /exactly two players/);
+  assert.throws(() => addTeams(s, group([team('One'), team('Two')], { payment: {} })), /transaction number or add a payment screenshot/);
+  assert.throws(() => addTeams(s, group(['A', 'B', 'C', 'D', 'E'].map(n => team(n)))), /can register 4 more teams \(up to 4 for one parish\)/);
+  assert.equal(s.teams.length, 0); assert.equal(s.teamSeq, undefined, 'a refused registration uses no team numbers');
+
+  const teams = addTeams(s, group([team('One', { primaryContact: 1, lunch: 2 }), team('Two'), team('Three', { lunch: 1 })]), 5000);
+  assert.deepEqual(teams.map(t => t.id), ['CAR-001', 'CAR-002', 'CAR-003']);
+  for (const t of teams) {
+    assert.deepEqual([t.status, t.payment, t.group], ['pending', { amount: 1500, txnRef: '412356789012', screenshot: true, teams: 3 }, { id: 'CAR-001', size: 3, coordinator: { name: 'Fr. Coord', mobile: '+91 99000 00000' } }]);
+    assert.deepEqual([t.parish, t.forane, t.registeredAt], [where.parish, where.forane, 5000]);
+  }
+  assert.notEqual(teams[0].checkinToken, teams[1].checkinToken, 'each team keeps its own check-in QR');
+  assert.deepEqual(teams.map(t => [t.primaryContact, t.lunch]), [[1, 2], [0, 0], [0, 1]]);
+  assert.equal(s.activity[0].message, `${where.parish} registered 3 teams (One, Two, Three) (payment to be confirmed)`);
+  assert.throws(() => addTeams(s, group([team('Four'), team('Five')])), /can register 1 more team \(/);
+  // The public sees the group's reference and size only.
+  const shown = publicTeam(teams[1]);
+  assert.deepEqual(shown.group, { id: 'CAR-001', size: 3 }); assert.ok(!JSON.stringify(shown).includes('99000'), 'the coordinator stays private');
+
+  // One confirmation covers the group; other teams are untouched.
+  const alone = addTeams(s, { ...entry('Alone', 1), teams: [team('Alone')], payment })[0];
+  assert.equal(alone.group, undefined); assert.deepEqual(alone.payment, { amount: 500, txnRef: '412356789012', screenshot: true });
+  assert.deepEqual(groupTeams(s, teams[2]).map(t => t.id), ['CAR-001', 'CAR-002', 'CAR-003']); assert.deepEqual(groupTeams(s, alone), [alone]);
+  assert.throws(() => groupForm(s, 'CAR-001', '9900000000'), /still being verified/);
+  confirmPayment(s, 'CAR-002', 7000, 'Omar Official');
+  assert.deepEqual(teams.map(t => [t.status, t.confirmedAt, t.confirmedBy]), Array(3).fill(['confirmed', 7000, 'Omar Official']));
+  assert.equal(alone.status, 'pending'); assert.equal(s.activity[0].message, 'Payment confirmed by Omar Official for 3 teams (One, Two, Three)');
+  assert.throws(() => confirmPayment(s, 'CAR-001'), /already confirmed/);
+
+  // The coordinator's mobile downloads any team's form, or all of them; players still get their own.
+  assert.deepEqual(groupForm(s, ' car-001 ', '099000 00000').map(t => t.id), ['CAR-001', 'CAR-002', 'CAR-003']);
+  assert.throws(() => groupForm(s, 'CAR-001', '9000000001'), /doesn’t match the parish coordinator’s/);
+  assert.throws(() => groupForm(s, 'CAR-002', '9900000000'), /Group registration not found/);
+  assert.equal(teamForm(s, 'CAR-003', '9900000000').id, 'CAR-003');
+  assert.equal(teamForm(s, 'CAR-001', '9000000001').id, 'CAR-001', 'player two is team One’s primary contact');
+  assert.throws(() => teamForm(s, 'CAR-002', '9000000001'), /primary contact or parish coordinator/);
 });
 test('lunch coupons: off by default; the counter serves each booked lunch once, and a serve can be undone', () => {
   const s = open(), t = addTeam(s, { ...entry('Hungry'), lunch: 2 }), none = addTeam(s, entry('Fed', 1));
