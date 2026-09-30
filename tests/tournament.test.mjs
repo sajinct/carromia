@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { emptyState, addTeam, createDraw, assign, start, roundWinner, nextRound, undoRound, eligible, updateSettings, boardReady, removeTeam, practiceEvent, publicState, walkover, undoWalkover, correctResult, unassign, actions, practiceMode, registrationStatus, parishKey, playerPhotos, seedDemo, paymentProof, confirmPayment, checkIn, isConfirmed } from '../lib/tournament.mjs';
+import { emptyState, addTeam, createDraw, assign, start, roundWinner, nextRound, undoRound, eligible, updateSettings, boardReady, removeTeam, practiceEvent, publicState, walkover, undoWalkover, correctResult, unassign, actions, practiceMode, registrationStatus, parishKey, playerPhotos, upiQrImage, seedDemo, paymentProof, confirmPayment, checkIn, isConfirmed } from '../lib/tournament.mjs';
 import { centres, groups, findCentre } from '../public/parishes.js';
 import { centre, player, photo } from './registration-fixture.mjs';
 // A team from the i-th parish or centre of the diocese register.
@@ -38,11 +38,14 @@ test('registration records the parish or centre from the register and each playe
   assert.throws(() => addTeam(s, { ...entry('Short ID'), players: [player('A'), { ...player('B'), idLast4: '12' }] }), /last 4/);
   assert.throws(() => addTeam(s, { ...entry('Odd ID'), players: [player('A'), { ...player('B'), idLast4: '12-4' }] }), /last 4/);
   assert.equal(publicState(s).teams[0].players[0].idLast4, undefined, 'ID details stay private');
-  // Photos are checked apart from the team, and kept out of the event.
-  assert.deepEqual(playerPhotos({ players: [player('A'), player('B')] }), [photo, photo]);
+  // Photos (each with a thumbnail) are checked apart from the team, and kept out of the event.
+  assert.deepEqual(playerPhotos({ players: [player('A'), player('B')] }), [{ photo, thumb: photo }, { photo, thumb: photo }]);
+  assert.throws(() => playerPhotos({ players: [player('A'), { ...player('B'), thumb: '' }] }), /photo of each player/, 'a thumbnail is needed too');
+  assert.throws(() => playerPhotos({ players: [player('A'), { ...player('B'), thumb: 'data:image/jpeg;base64,' + 'A'.repeat(200000) }] }), /photo of each player/, 'thumbnails stay small');
+  assert.equal(playerPhotos({ players: [{ ...player('A'), photo: 'data:image/jpeg;base64,' + 'A'.repeat(4000000) }, player('B')] })[0].photo.length, 4000023, 'high-quality photos are allowed');
   assert.throws(() => playerPhotos({ players: [player('A'), player('B', '9', false)] }), /photo of each player/);
   assert.throws(() => playerPhotos({ players: [player('A'), { ...player('B'), photo: 'data:image/png;base64,AAAA' }] }), /photo of each player/);
-  assert.throws(() => playerPhotos({ players: [player('A'), { ...player('B'), photo: 'data:image/jpeg;base64,' + 'A'.repeat(200000) }] }), /photo of each player/);
+  assert.throws(() => playerPhotos({ players: [player('A'), { ...player('B'), photo: 'data:image/jpeg;base64,' + 'A'.repeat(5600000) }] }), /photo of each player/);
   assert.ok(!JSON.stringify(s).includes('base64'));
   assert.ok(seedDemo().teams.every(t => findCentre(t.forane, t.parish, t.centreType) && t.players.every(p => p.idType && p.idLast4.length === 4)), 'sample teams use the register too');
 });
@@ -57,6 +60,11 @@ test('event settings: payment at registration needs a UPI QR code; support conta
   assert.deepEqual([s.event.paymentRequired, s.event.upiQr, s.event.upiId, s.event.contacts], [true, qr, 'carromia@okaxis', [{ name: 'Fr. Joseph', phone: '9876543210' }]]);
   assert.throws(() => updateSettings(s, { ...base, upiQr: '' }), /Upload the UPI QR code/, 'the QR can’t be removed while payment is on');
   updateSettings(s, { ...base, paymentRequired: false, upiQr: '' }); assert.equal(s.event.paymentRequired, false);
+  // The QR code is normally an uploaded file: its Storage address, or the Node server's.
+  const file = 'main/upi-qr-0b6f7c1e-2a4d-4e8f-9c3b-5d6e7f8a9b0c.png';
+  for (const url of [`https://vzxcqpgwvknonkhjinuk.supabase.co/storage/v1/object/public/event-assets/${file}`, `/api/assets/${file}`]) { updateSettings(s, { ...base, upiQr: url }); assert.equal(s.event.upiQr, url); }
+  for (const url of ['https://example.org/qr.png', `https://x.supabase.co/storage/v1/object/public/team-files/${file}`, `/api/assets/../${file}`]) assert.throws(() => updateSettings(s, { ...base, upiQr: url }), /PNG or JPEG/);
+  assert.equal(upiQrImage({ image: qr }), qr); assert.throws(() => upiQrImage({ image: photo }), /PNG or JPEG/);
 });
 test('payment at registration: pending until the desk confirms; pending teams can’t check in or play', () => {
   const s = open(); s.event.paymentRequired = true;

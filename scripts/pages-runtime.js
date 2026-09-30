@@ -5,7 +5,7 @@
 // separate 'practice' event instead, so a TV, phones and the desk can rehearse the full flow
 // without touching the real event. It stays on until "Exit practice", or until an admin turns
 // practice mode off for everyone (practiceOff on the real event), which sends every device back.
-import { emptyState, eligible, fail, freshEvent, publicState, practiceEvent, actions, registrationStatus, defaults, playerPhotos, paymentProof, shareRoutes } from './tournament-browser.js';
+import { emptyState, eligible, fail, freshEvent, publicState, practiceEvent, actions, registrationStatus, defaults, playerPhotos, paymentProof, shareRoutes, thumbPath, upiQrImage } from './tournament-browser.js';
 import { findCentre } from './parishes.js';
 
 export const pagesMode = true;
@@ -32,11 +32,12 @@ if (typeof location !== 'undefined') { const flag = new URLSearchParams(location
 const siteUrl = () => `${location.origin}${location.pathname}`;
 const practiceLink = route => `${siteUrl()}?practice=1#${route}`;
 
-async function request(path, { method = 'GET', body, token } = {}) {
-  const headers = { apikey: PUBLISHABLE_KEY, 'Content-Type': 'application/json' };
+// `bytes` sends a file (with its `type`) instead of JSON.
+async function request(path, { method = 'GET', body, bytes, type, token } = {}) {
+  const headers = { apikey: PUBLISHABLE_KEY, 'Content-Type': bytes ? type : 'application/json' };
   if (token) headers.Authorization = `Bearer ${token}`;
   let res;
-  try { res = await fetch(SUPABASE_URL + path, { method, headers, cache: 'no-store', body: body === undefined ? undefined : JSON.stringify(body) }); }
+  try { res = await fetch(SUPABASE_URL + path, { method, headers, cache: 'no-store', body: bytes ?? (body === undefined ? undefined : JSON.stringify(body)) }); }
   catch { throw new Error('Unable to reach the tournament. Check your connection and try again.'); }
   const text = await res.text(); let value = null;
   try { value = text ? JSON.parse(text) : null; } catch { value = text; }
@@ -53,6 +54,18 @@ async function accessToken() {
     writeSession({ ...session, access_token: next.access_token, refresh_token: next.refresh_token, expires_at: next.expires_at }); return next.access_token;
   } catch { writeSession(null); return null; }
 }
+// Photos and payment screenshots are private files; officials get links to them that last an hour.
+async function signed(user, paths) {
+  if (!paths.length) return [];
+  const links = await request('/storage/v1/object/sign/team-files', { method: 'POST', token: user.token, body: { expiresIn: 3600, paths } });
+  return paths.map(p => { const link = links.find(l => l.path === p)?.signedURL; return link ? `${SUPABASE_URL}/storage/v1${link}` : ''; });
+}
+// The registration Edge Function (supabase/functions/registration) holds the key for team files.
+async function registration(body, token) {
+  try { return await request('/functions/v1/registration', { method: 'POST', token, body }); }
+  catch (error) { throw error.status === 404 && !/Team not found/.test(error.message) ? new Error('Registration is being updated. Please try again shortly.') : error; }
+}
+const dataBytes = data => Uint8Array.from(atob(data.slice(data.indexOf(',') + 1)), c => c.charCodeAt(0));
 async function official() { const token = await accessToken(); return token ? { token, ...readSession().official } : null; }
 
 async function syncClock() {
@@ -151,7 +164,7 @@ export async function remoteApi(path, input = {}) {
   // A team's registration form, for whoever knows its primary player's mobile number; the database
   // checks the number and counts wrong tries.
   if (path === 'team-form') {
-    const reply = await request('/rest/v1/rpc/team_form', { method: 'POST', body: { p_event: eventId(), p_team_id: String(input.id ?? '').trim().toUpperCase(), p_mobile: String(input.mobile ?? '') } });
+    const reply = await registration({ action: 'team-form', event: eventId(), id: String(input.id ?? '').trim().toUpperCase(), mobile: String(input.mobile ?? '') });
     fail(reply.error, reply.error);
     const { team: { checkinToken, ...team }, photos } = reply;
     const token = encodeURIComponent(checkinToken);
@@ -167,27 +180,46 @@ export async function remoteApi(path, input = {}) {
     fail(input.adults !== true, 'Confirm that both players are 18 or older.');
     playerPhotos(input);
     const payment = { txnRef: String(input.payment?.txnRef ?? ''), screenshot: paymentProof(input) };
-    const body = { p_name: input.name, p_forane: centre.group, p_parish: centre.name, p_centre_type: centre.type, p_players: players, p_primary: Number(input.primaryContact) === 1 ? 1 : 0, p_event: eventId(), p_lunch: Number(input.lunch) || 0, p_adults: true, p_payment: payment };
-    try { return await request('/rest/v1/rpc/register_team', { method: 'POST', body }); }
-    catch (error) { throw error.status === 404 ? new Error('Registration is being updated. Please try again shortly.') : error; }
+    return registration({ action: 'register', p_name: input.name, p_forane: centre.group, p_parish: centre.name, p_centre_type: centre.type, p_players: players, p_primary: Number(input.primaryContact) === 1 ? 1 : 0, p_event: eventId(), p_lunch: Number(input.lunch) || 0, p_adults: true, p_payment: payment });
   }
 
   const user = await official();
   if (path === 'state') return view(user);
   if (officialActions[path]) return manageOfficials(user, officialActions[path], input);
   fail(!user, 'Sign in to the tournament desk first.');
-  // Player photos, for officials: { [team id]: [photo 1, photo 2] }.
+  // Player photo thumbnails, for officials: { [team id]: [photo 1, photo 2] }.
   if (path === 'photos') {
-    const rows = await request(`/rest/v1/player_photos?event=eq.${eventId()}&select=team_id,player,image`, { token: user.token });
-    const map = {}; for (const r of rows) { map[r.team_id] ??= []; map[r.team_id][r.player] = r.image; } return map;
+    const rows = (await request(`/rest/v1/player_photos?event=eq.${eventId()}&select=team_id,player,path`, { token: user.token })).filter(r => r.path);
+    const links = await signed(user, rows.map(r => thumbPath(r.path)));
+    const map = {}; rows.forEach((r, i) => { map[r.team_id] ??= []; map[r.team_id][r.player] = links[i]; }); return map;
   }
-  if (path === 'payment-proofs') return Object.fromEntries((await request(`/rest/v1/payment_proofs?event=eq.${eventId()}&select=team_id,image`, { token: user.token })).map(r => [r.team_id, r.image]));
+  // One player's full-size photo.
+  if (path.startsWith('photo-full?')) {
+    const q = new URLSearchParams(path.slice(11));
+    const [row] = await request(`/rest/v1/player_photos?event=eq.${eventId()}&team_id=eq.${encodeURIComponent(q.get('team'))}&player=eq.${Number(q.get('player'))}&select=path`, { token: user.token });
+    fail(!row?.path, 'No photo for this player.');
+    return { url: (await signed(user, [row.path]))[0] };
+  }
+  if (path === 'payment-proofs') {
+    const rows = (await request(`/rest/v1/payment_proofs?event=eq.${eventId()}&select=team_id,path`, { token: user.token })).filter(r => r.path);
+    const links = await signed(user, rows.map(r => r.path));
+    return Object.fromEntries(rows.map((r, i) => [r.team_id, links[i]]));
+  }
+  // The UPI QR code for Event settings: a public file; settings then keep its address.
+  if (path === 'upi-qr') {
+    fail(user.role !== 'admin' && !practiceOn(), 'Only an event admin can do this.');
+    const file = `${eventId()}/upi-qr-${crypto.randomUUID()}.png`;
+    await request(`/storage/v1/object/event-assets/${file}`, { method: 'POST', token: user.token, bytes: dataBytes(upiQrImage(input)), type: 'image/png' });
+    return { url: `${SUPABASE_URL}/storage/v1/object/public/event-assets/${file}` };
+  }
   if (path === 'backup') { fail(user.role !== 'admin', 'Only an event admin can download backups.'); return (await load(user)).state; }
   const action = handlers[path];
   fail(!action, 'This action is not available.');
   // In practice mode every official may try every action; the real event keeps admin-only actions.
   fail(action.admin && user.role !== 'admin' && !practiceOn(), 'Only an event admin can do this.');
   await change(user, path, input, (state, event) => action.run(state, input, { now: now(), official: user.name, event }));
+  // A removed team's files, or a fresh event's, are deleted in the background.
+  if (path === 'remove-team' || path === 'reset') registration({ action: 'sweep' }, user.token).catch(() => {});
   return { ok: true };
 }
 

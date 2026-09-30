@@ -31,9 +31,12 @@ test('API protects the desk, persists registration, produces QR, and omits priva
   assert.equal(reg.status, 201); const { team } = await reg.json(); assert.equal(team.id, 'CAR-001');
   const publicState = await (await fetch(`${base}/api/state`)).json(); assert.equal(publicState.teams[0].players[0].mobile, undefined); assert.equal(publicState.teams[0].players[0].idLast4, undefined); assert.equal(publicState.teams[0].checkinToken, undefined);
   assert.equal(publicState.teams[0].forane, centre(1).forane);
-  // Photos are kept apart from the event and only the desk can see them.
+  // Photos are files kept apart from the event, and only the desk can see them.
   assert.ok(!readFileSync(join(data, 'tournament.json'), 'utf8').includes('base64')); assert.ok(existsSync(join(data, 'photos', 'CAR-001.json')));
+  const [full] = JSON.parse(readFileSync(join(data, 'photos', 'CAR-001.json'), 'utf8'));
+  assert.match(full, /^main\/[0-9a-f-]{36}\/player-1\.jpg$/); assert.ok(existsSync(join(data, 'uploads', 'team-files', full))); assert.ok(existsSync(join(data, 'uploads', 'team-files', full.replace('.jpg', '-thumb.jpg'))));
   assert.equal((await fetch(`${base}/api/photos`)).status, 401);
+  assert.equal((await fetch(`${base}/api/files/team-files/${full}`)).status, 401);
   const qr = await (await fetch(`${base}/api/qr?token=${team.checkinToken}`)).json(); assert.match(qr.qr, /^data:image\/png;base64,/);
   const results = await (await fetch(`${base}/api/link-qr?route=/results`)).json(); assert.match(results.qr, /^data:image\/png;base64,/); assert.match(results.url, /\/results$/);
   assert.equal((await fetch(`${base}/api/link-qr?route=/admin`)).status, 404, 'only public pages get a QR code');
@@ -42,7 +45,12 @@ test('API protects the desk, persists registration, produces QR, and omits priva
   assert.equal((await post('checkin', { token: team.checkinToken }, cookie)).status, 200);
   const adminState = await (await fetch(`${base}/api/state`, { headers: { Cookie: cookie } })).json(); assert.equal(adminState.teams[0].checkedIn, true); assert.equal(adminState.teams[0].players[0].mobile, '9111111111'); assert.equal(adminState.teams[0].lunch, 2);
   assert.equal(adminState.teams[0].players[0].idType, 'Aadhaar'); assert.equal(adminState.teams[0].checkinToken, team.checkinToken, 'the desk can print a team’s form again');
-  assert.deepEqual(await (await fetch(`${base}/api/photos`, { headers: { Cookie: cookie } })).json(), { 'CAR-001': [photo, photo] });
+  const thumbs = (await (await fetch(`${base}/api/photos`, { headers: { Cookie: cookie } })).json())['CAR-001'];
+  assert.deepEqual(thumbs, [1, 2].map(n => `/api/files/team-files/${full.replace('player-1.jpg', `player-${n}-thumb.jpg`)}`), 'lists get thumbnails');
+  const picture = await fetch(base + thumbs[0], { headers: { Cookie: cookie } });
+  assert.equal(picture.headers.get('content-type'), 'image/jpeg'); assert.deepEqual(Buffer.from(await picture.arrayBuffer()), Buffer.from(photo.split(',')[1], 'base64'));
+  assert.deepEqual(await (await fetch(`${base}/api/photo-full?team=CAR-001&player=0`, { headers: { Cookie: cookie } })).json(), { url: `/api/files/team-files/${full}` });
+  assert.equal((await fetch(`${base}/api/files/team-files/../tournament.json`, { headers: { Cookie: cookie } })).status, 404, 'only team files can be read');
   assert.deepEqual(adminState.registration, { open: true, reason: '', slotsLeft: 63, maxTeams: 64 }); assert.equal(adminState.event.entryFee, 500);
   assert.equal((await post('change-password', { current: 'test-password', password: 'another-password' }, cookie)).status, 400, 'the shared desk password is not changed from the app');
   assert.equal((await fetch(`${base}/api/backup`)).status, 401);
@@ -57,14 +65,21 @@ test('registration is rate limited per connection', async t => {
 test('payment at registration: pending until an official confirms it; the form needs the primary mobile', async t => {
   const { base, data, post, login } = await serve(t, 3102); const cookie = await login(), qr = photo.replace('jpeg', 'png');
   assert.equal((await post('settings', { gamesPerMatch: 3, gameMinutes: 10, resetMinutes: 5, restMinutes: 0, registrationOpen: true, registrationDeadline: '', paymentRequired: true, upiQr: qr, contacts: [{ name: 'Fr. Joseph', phone: '9876543210' }] }, cookie)).status, 200);
-  const before = await (await fetch(`${base}/api/state`)).json(); assert.equal(before.event.upiQr, qr); assert.deepEqual(before.event.contacts, [{ name: 'Fr. Joseph', phone: '9876543210' }]);
+  const before = await (await fetch(`${base}/api/state`)).json(); assert.equal(before.event.upiQr, qr, 'a QR code saved in the event still works'); assert.deepEqual(before.event.contacts, [{ name: 'Fr. Joseph', phone: '9876543210' }]);
+  // The QR code is uploaded as a public file and the settings keep its address.
+  assert.equal((await post('upi-qr', { image: qr })).status, 401);
+  assert.equal((await post('upi-qr', { image: photo }, cookie)).status, 400, 'the QR code is a PNG');
+  const { url } = await (await post('upi-qr', { image: qr }, cookie)).json(); assert.match(url, /^\/api\/assets\/main\/upi-qr-[0-9a-f-]{36}\.png$/);
+  const asset = await fetch(base + url); assert.equal(asset.status, 200); assert.equal(asset.headers.get('content-type'), 'image/png');
+  assert.equal((await post('settings', { gamesPerMatch: 3, gameMinutes: 10, resetMinutes: 5, restMinutes: 0, registrationOpen: true, registrationDeadline: '', paymentRequired: true, upiQr: url }, cookie)).status, 200);
+  assert.equal((await (await fetch(`${base}/api/state`)).json()).event.upiQr, url);
   assert.equal((await post('register', entry(1))).status, 400, 'a UTR or a screenshot is needed');
   const reg = await post('register', { ...entry(1), payment: { txnRef: '412356789012', screenshot: photo } });
   assert.equal(reg.status, 201); const { team } = await reg.json(); assert.equal(team.status, 'pending');
   const after = await (await fetch(`${base}/api/state`)).json(); assert.equal(after.teams[0].payment, undefined, 'the UTR is not public');
-  assert.ok(existsSync(join(data, 'payments', 'CAR-001.json')));
+  const shot = JSON.parse(readFileSync(join(data, 'payments', 'CAR-001.json'), 'utf8')); assert.match(shot, /\/payment\.jpg$/);
   assert.equal((await fetch(`${base}/api/payment-proofs`)).status, 401);
-  assert.deepEqual(await (await fetch(`${base}/api/payment-proofs`, { headers: { Cookie: cookie } })).json(), { 'CAR-001': photo });
+  assert.deepEqual(await (await fetch(`${base}/api/payment-proofs`, { headers: { Cookie: cookie } })).json(), { 'CAR-001': `/api/files/team-files/${shot}` });
   const form = (id, mobile) => post('team-form', { id, mobile });
   assert.match((await (await form('CAR-001', '9111111111')).json()).error, /still being verified/);
   assert.equal((await post('checkin', { id: 'CAR-001' }, cookie)).status, 400, 'pending teams can’t check in');
@@ -79,10 +94,12 @@ test('payment at registration: pending until an official confirms it; the form n
 test('removing a team or starting a fresh event deletes player photos', async t => {
   const { base, data, post, login } = await serve(t, 3101); const cookie = await login();
   for (const i of [1, 2]) assert.equal((await post('register', entry(i))).status, 201);
+  const [first] = JSON.parse(readFileSync(join(data, 'photos', 'CAR-001.json'), 'utf8'));
   assert.equal((await post('remove-team', { id: 'CAR-001' }, cookie)).status, 200);
   assert.deepEqual(Object.keys(await (await fetch(`${base}/api/photos`, { headers: { Cookie: cookie } })).json()), ['CAR-002']);
+  assert.ok(!existsSync(join(data, 'uploads', 'team-files', first)), 'the removed team’s files are deleted');
   assert.equal((await post('reset', { confirm: 'RESET' }, cookie)).status, 200);
-  assert.ok(!existsSync(join(data, 'photos')));
+  assert.ok(!existsSync(join(data, 'photos'))); assert.ok(!existsSync(join(data, 'uploads', 'team-files')));
 });
 test('loading the sample tournament keeps event details and timings', async t => {
   const { base, post, login } = await serve(t, 3099); const cookie = await login();

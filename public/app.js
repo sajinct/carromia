@@ -207,15 +207,16 @@ function openTeamFromLink() {
   const id = new URLSearchParams(pagesMode ? location.hash.split('?')[1] : location.search).get('team');
   if (id && openedTeamLink !== id && !modal.open) { openedTeamLink = id; teamDownloadDialog(id.toUpperCase()); }
 }
-// The UPI QR code for Event settings: at most 600px, kept sharp, under the size the event allows.
+// The UPI QR code for Event settings: a PNG at its own size (at most 2000px), on white, so it stays
+// sharp. It is saved as a file and the settings keep its address.
 async function upiQrData(file) {
   if (!file?.size) return '';
   let image; try { image = await createImageBitmap(file); } catch { throw new Error('That image couldn’t be opened. Choose a PNG or JPEG picture of the QR code.'); }
-  const scale = Math.min(1, 600 / Math.max(image.width, image.height)), canvas = document.createElement('canvas'), ctx = canvas.getContext('2d');
-  canvas.width = Math.round(image.width * scale); canvas.height = Math.round(image.height * scale); ctx.imageSmoothingEnabled = scale === 1;
+  const scale = Math.min(1, 2000 / Math.max(image.width, image.height)), canvas = document.createElement('canvas'), ctx = canvas.getContext('2d');
+  canvas.width = Math.round(image.width * scale); canvas.height = Math.round(image.height * scale);
   ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, canvas.width, canvas.height); ctx.drawImage(image, 0, 0, canvas.width, canvas.height); image.close();
-  const png = canvas.toDataURL('image/png'), data = png.length <= 150000 ? png : canvas.toDataURL('image/jpeg', 0.9);
-  if (data.length > 150000) throw new Error('That QR image is too large. Crop it to just the QR code and try again.');
+  const data = canvas.toDataURL('image/png');
+  if (data.length > 7000000) throw new Error('That QR image is too large. Crop it to just the QR code and try again.');
   return data;
 }
 function playerFields(n) {
@@ -226,15 +227,16 @@ function playerFields(n) {
 function centreOptions(group) {
   return `<option value="">Select parish or centre</option>${centreTypes.map(type => { const list = centres.filter(c => c.group === group && c.type === type); return list.length ? `<optgroup label="${type}">${list.map(c => `<option value="${esc(`${c.type}|${c.name}`)}">${esc(c.name)}</option>`).join('')}</optgroup>` : ''; }).join('')}`;
 }
-// A picture as a JPEG: at most `size` px on the longer side (player photos 320px, about 20–40 KB).
-async function photoData(file, size = 320, limit = 200000) {
+// A picture as a JPEG: at most `size` px on the longer side. Photos and screenshots are kept at up to
+// 2000px; a photo's thumbnail (320px, about 20–40 KB) is for lists and the registration form.
+async function photoData(file, size = 320, limit = 200000, quality = 0.8) {
   if (!file?.size) throw new Error('Add a photo of each player.');
   let image; try { image = await createImageBitmap(file); } catch { throw new Error('That photo couldn’t be opened. Choose a JPEG or PNG picture.'); }
   for (let side = size; ; side = Math.round(side * 0.8)) {
     const scale = Math.min(1, side / Math.max(image.width, image.height)), canvas = document.createElement('canvas');
     canvas.width = Math.round(image.width * scale); canvas.height = Math.round(image.height * scale);
     canvas.getContext('2d').drawImage(image, 0, 0, canvas.width, canvas.height);
-    const data = canvas.toDataURL('image/jpeg', 0.8);
+    const data = canvas.toDataURL('image/jpeg', quality);
     if (data.length <= limit || side < 200) { image.close(); return data; }
   }
 }
@@ -257,9 +259,16 @@ function pdfLogos() {
     img.onerror = () => resolve(null); img.src = `${pagesMode ? '.' : ''}${h.img}`;
   }))).then(logos => logos.filter(Boolean));
 }
+const fullPhoto = file => photoData(file, 2000, 5600000, 0.9);
+// A picture as a data URL, which the PDF needs; photos from the desk and the form link are links.
+async function imageData(src) {
+  if (!src || src.startsWith('data:')) return src || '';
+  try { const blob = await (await fetch(src)).blob(); return await new Promise(resolve => { const reader = new FileReader(); reader.onload = () => resolve(reader.result); reader.onerror = () => resolve(''); reader.readAsDataURL(blob); }); }
+  catch { return ''; }
+}
 async function saveRegistrationPdf(team, qr, teamPhotos = []) {
-  const [jsPDF, logos] = await Promise.all([loadJsPdf(), pdfLogos()]);
-  registrationPdf(jsPDF, { team, event: state.event, qr, photos: teamPhotos, logos }).save(`${team.id}-registration-form.pdf`);
+  const [jsPDF, logos, photos] = await Promise.all([loadJsPdf(), pdfLogos(), Promise.all(teamPhotos.map(imageData))]);
+  registrationPdf(jsPDF, { team, event: state.event, qr, photos, logos }).save(`${team.id}-registration-form.pdf`);
 }
 function rulesPage() {
   let number = 0;
@@ -355,7 +364,8 @@ function loadPhotos() {
   api('photos').then(p => { photos = p || {}; }).catch(() => {}).finally(() => { photosFor = ids; photosLoading = false; if (['/admin/teams', '/checkin'].includes(page) && !busy()) render(); });
 }
 const nameInitials = name => String(name).split(/\s+/).map(w => w[0]).join('').slice(0, 2).toUpperCase();
-const playerPhoto = (t, i) => photos[t.id]?.[i] ? `<img class="player-photo" src="${photos[t.id][i]}" alt="" width="36" height="36">` : `<span class="player-photo">${esc(nameInitials(t.players[i]?.name || '?'))}</span>`;
+// A tap on a photo shows the full-size one.
+const playerPhoto = (t, i) => photos[t.id]?.[i] ? `<button type="button" class="photo-button" data-action="photo-full" data-id="${t.id}" data-player="${i}" aria-label="Show ${esc(t.players[i]?.name || 'the player')}’s photo"><img class="player-photo" src="${photos[t.id][i]}" alt="" width="36" height="36"></button>` : `<span class="player-photo">${esc(nameInitials(t.players[i]?.name || '?'))}</span>`;
 const idLabel = p => p.idType ? `${esc(p.idType)} ··${esc(p.idLast4)}` : '';
 // Pending teams: the payment to confirm. Confirmed teams: check-in.
 function checkinCell(t) {
@@ -450,6 +460,7 @@ document.addEventListener('click', async event => {
     b.disabled = true;
     if (action === 'team-download') { b.disabled = false; return teamDownloadDialog(id); }
     if (action === 'remove-upi-qr') { b.disabled = false; $('#settings-form [name=upiQr]').value = ''; $('#upi-qr-preview').hidden = true; b.hidden = true; return; }
+    if (action === 'photo-full') { const t = team(id), p = Number(b.dataset.player), { url } = await api(`photo-full?team=${encodeURIComponent(id)}&player=${p}`); b.disabled = false; return dialog(`<div class="eyebrow">${esc(id)} · ${esc(t?.name)}</div><h2>${esc(t?.players[p]?.name || 'Player photo')}</h2><img class="payment-proof" src="${url}" alt="Photo of ${esc(t?.players[p]?.name || 'the player')}">`); }
     if (action === 'payment-proof') { const proofs = await api('payment-proofs'); b.disabled = false; return dialog(proofs[id] ? `<div class="eyebrow">${esc(id)}</div><h2>Payment screenshot</h2><img class="payment-proof" src="${proofs[id]}" alt="Payment screenshot for ${esc(id)}">` : '<h2>No screenshot</h2><p>This team gave only a transaction number.</p>'); }
     if (action === 'confirm-payment') { const t = team(id); b.disabled = false; return dialog(`<div class="eyebrow">${esc(id)} · ${money(t.payment?.amount ?? state.event.entryFee)}</div><h2>Confirm ${esc(t.name)}’s payment?</h2><p>Check that the payment has reached the bank${t.payment?.txnRef ? `: UTR <strong>${esc(t.payment.txnRef)}</strong>` : ''}. The team can then download its registration form and check in.</p><div class="dialog-actions"><button class="btn outline" data-action="close">Not yet</button><button class="btn primary" data-action="confirm-payment-yes" data-id="${esc(id)}">${icon('check')} Payment received</button></div>`); }
     if (action === 'confirm-payment-yes') { await api('confirm-payment', { id }); modal.close(); toast('Payment confirmed. Send the team its form on WhatsApp.'); await sync(); return; }
@@ -495,7 +506,7 @@ document.addEventListener('change', async event => {
   const el = event.target;
   if (el.name === 'forane' && el.form?.id === 'registration-form') { const centre = el.form.elements.centre; centre.innerHTML = el.value ? centreOptions(el.value) : '<option value="">Choose the forane first</option>'; centre.disabled = !el.value; }
   if (el.name === 'upiQrFile') {
-    try { const data = await upiQrData(el.files[0]); if (data) { $('#settings-form [name=upiQr]').value = data; const preview = $('#upi-qr-preview'); preview.src = data; preview.hidden = false; $('[data-action=remove-upi-qr]').hidden = false; } }
+    try { const data = await upiQrData(el.files[0]); if (data) { const { url } = await api('upi-qr', { image: data }); $('#settings-form [name=upiQr]').value = url; const preview = $('#upi-qr-preview'); preview.src = data; preview.hidden = false; $('[data-action=remove-upi-qr]').hidden = false; toast('QR code uploaded. Save settings to use it.'); } }
     catch (error) { el.value = ''; toast(error.message, true); }
   }
   if (el.dataset?.photo) {
@@ -518,13 +529,13 @@ document.addEventListener('submit', async event => {
     if (form.getAttribute('id') === 'login-form') { await api('login', fields); await sync(); return; }
     if (form.getAttribute('id') === 'registration-form') {
       if (state.event.paymentRequired && !String(fields.txnRef || '').trim() && !fields.paymentShot?.size) throw new Error('Enter the UPI transaction number or add a payment screenshot.');
-      const [centreType, ...parish] = String(fields.centre || '').split('|'), photos = await Promise.all([photoData(fields.photo1), photoData(fields.photo2)]);
-      const payment = state.event.paymentRequired ? { txnRef: fields.txnRef, screenshot: fields.paymentShot?.size ? await photoData(fields.paymentShot, 1000, 400000) : '' } : undefined;
-      const player = n => ({ name: fields[`player${n}`], mobile: fields[`mobile${n}`], idType: fields[`idType${n}`], idLast4: fields[`idLast4${n}`], photo: photos[n - 1] });
+      const [centreType, ...parish] = String(fields.centre || '').split('|'), [photos, thumbs] = await Promise.all([Promise.all([fullPhoto(fields.photo1), fullPhoto(fields.photo2)]), Promise.all([photoData(fields.photo1), photoData(fields.photo2)])]);
+      const payment = state.event.paymentRequired ? { txnRef: fields.txnRef, screenshot: fields.paymentShot?.size ? await fullPhoto(fields.paymentShot) : '' } : undefined;
+      const player = n => ({ name: fields[`player${n}`], mobile: fields[`mobile${n}`], idType: fields[`idType${n}`], idLast4: fields[`idLast4${n}`], photo: photos[n - 1], thumb: thumbs[n - 1] });
       const { team: t } = await api('register', { name: fields.name, forane: fields.forane, parish: parish.join('|'), centreType, primaryContact: fields.primaryContact, lunch: Number(fields.lunch) || 0, adults: fields.adults === 'on', players: [player(1), player(2)], payment });
       if (t.status === 'pending') { form.closest('.form-card').innerHTML = pendingConfirmation(t); return; }
       let qr = ''; try { qr = (await api(`qr?token=${t.checkinToken}`)).qr; } catch {}
-      lastRegistration = { team: t, qr, photos };
+      lastRegistration = { team: t, qr, photos: thumbs };
       form.closest('.form-card').innerHTML = `<div class="confirmation"><span class="success-icon">${icon('check')}</span><div class="eyebrow">YOU’RE ON THE TEAM SHEET</div><h2>See you at the board.</h2><p>${esc(t.name)} is registered.</p><strong class="confirmation-id">${t.id}</strong><p>${t.players.map(p => esc(p.name)).join(' & ')}<br><small>${esc(t.parish)} · ${esc(t.forane)}</small></p>${qr ? `<img class="qr" src="${qr}" width="220" height="220" alt="Check-in QR code for ${t.id}">` : ''}<p class="form-note">Save your team ID${qr ? ' and QR code' : ''} for check-in at the tournament desk. Reporting time is 9:00 AM.</p><button class="btn primary" type="button" data-action="registration-pdf">${icon('download')} Download registration form (PDF)</button><div class="notice confirmation-notes"><strong>Entry fee ${money(state.event.entryFee)} per team${t.lunch ? ` · lunch booked for ${t.lunch === 2 ? 'both players' : '1 player'}` : ''}</strong><span>Print the registration form. Both players sign it, and your Parish Priest attests it with the parish seal. The rules are included.</span><span>Bring on the day:</span><ol>${documents.map(line => `<li>${esc(line)}</li>`).join('')}</ol></div>${qr ? `<a class="btn outline" href="${qr}" download="${t.id}-checkin.png">${icon('download')} Save QR code</a>` : ''}<a class="btn outline" href="/live">View live boards ${icon('arrow')}</a></div>`; return;
     }
     if (form.getAttribute('id') === 'assign-form') await api('assign', fields);

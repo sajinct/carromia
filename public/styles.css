@@ -236,6 +236,7 @@ a.ph-info-link:hover strong,.ph-info>a:hover strong{text-decoration:underline;te
 .player-cell>span:last-child{display:flex;flex-direction:column}
 .player-photo{width:36px;height:36px;border-radius:50%;object-fit:cover;flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;background:var(--soft);color:var(--green-2);font-size:11px;font-weight:700;box-shadow:0 0 0 1px var(--line)}
 .player-photo.large{width:96px;height:96px;font-size:26px}
+.photo-button{padding:0;border:0;background:none;border-radius:50%;cursor:zoom-in;display:inline-flex;flex-shrink:0}
 .checkin-players{display:flex;justify-content:center;gap:28px;flex-wrap:wrap;margin:6px 0 14px}
 .checkin-players>div{display:flex;flex-direction:column;align-items:center;gap:6px}
 .checkin-players small{color:var(--muted)}
@@ -243,7 +244,7 @@ a.ph-info-link:hover strong,.ph-info>a:hover strong{text-decoration:underline;te
 
 /* Payment at registration, support contacts and the public teams list */
 .payment-fields .upi-qr{display:block;margin:6px auto 12px}
-.upi-qr{width:220px;height:auto;max-width:100%;border-radius:8px;box-shadow:0 0 0 1px var(--line);background:#fff;image-rendering:pixelated}
+.upi-qr{width:220px;height:auto;max-width:100%;border-radius:8px;box-shadow:0 0 0 1px var(--line);background:#fff}
 .upi-id{display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:8px;margin-bottom:16px}
 .upi-id code{font-size:13px;background:var(--soft);padding:6px 10px;border-radius:6px}
 .upi-setting{display:flex;align-items:flex-start;gap:16px}
