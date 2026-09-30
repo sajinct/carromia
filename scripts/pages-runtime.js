@@ -5,7 +5,7 @@
 // separate 'practice' event instead, so a TV, phones and the desk can rehearse the full flow
 // without touching the real event. It stays on until "Exit practice", or until an admin turns
 // practice mode off for everyone (practiceOff on the real event), which sends every device back.
-import { emptyState, eligible, fail, freshEvent, publicState, practiceEvent, actions, registrationStatus, defaults, playerPhotos, paymentProof } from './tournament-browser.js';
+import { emptyState, eligible, fail, freshEvent, publicState, practiceEvent, actions, registrationStatus, defaults, playerPhotos, paymentProof, shareRoutes } from './tournament-browser.js';
 import { findCentre } from './parishes.js';
 
 export const pagesMode = true;
@@ -84,9 +84,14 @@ async function change(user, action, input, apply) {
   }
 }
 
-async function qrCode(url) {
+async function qrCode(url, width = 240) {
   const { default: QRCode } = await import('https://cdn.jsdelivr.net/npm/qrcode@1.5.4/+esm');
-  return { qr: await QRCode.toDataURL(url, { width: 240, margin: 2, color: { dark: '#172d2c', light: '#ffffff' } }) };
+  return { qr: await QRCode.toDataURL(url, { width, margin: 2, color: { dark: '#172d2c', light: '#ffffff' } }) };
+}
+// A public page's link for this device's event: a practice screen points phones to practice.
+export function shareLink(route) {
+  fail(!shareRoutes.includes(route), 'Page not found.');
+  return practiceOn() ? practiceLink(route) : `${siteUrl()}#${route}`;
 }
 
 async function signIn(input) {
@@ -138,6 +143,7 @@ export async function remoteApi(path, input = {}) {
   // Check-in QR codes keep the device in the same event (a practice QR opens practice mode).
   if (path.startsWith('qr?')) { const token = encodeURIComponent(new URLSearchParams(path.slice(3)).get('token')); return qrCode(practiceOn() ? practiceLink(`/checkin?token=${token}`) : `${siteUrl()}#/checkin?token=${token}`); }
   if (path.startsWith('practice-qr?')) return qrCode(practiceLink(new URLSearchParams(path.slice(12)).get('route')));
+  if (path.startsWith('link-qr?')) { const url = shareLink(new URLSearchParams(path.slice(8)).get('route')); return { url, ...await qrCode(url, 320) }; }
   if (path === 'practice') { fail(input.on === true && await practiceOff(), 'Practice mode is turned off by the event admin.'); setPractice(input.on === true); return { ok: true }; }
   await syncClock();
   if (path === 'login') return signIn(input);

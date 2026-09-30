@@ -72,7 +72,7 @@ test('live Pages runtime: public view, official sign-in, roles, conflict retry, 
   globalThis.localStorage = { getItem: key => memory.get(key) ?? null, setItem: (key, value) => memory.set(key, value), removeItem: key => memory.delete(key) };
   globalThis.fetch = db.fetch; globalThis.location = { origin: 'https://sajinct.github.io', pathname: '/carromia/', search: '' };
   t.after(() => { globalThis.fetch = realFetch; delete globalThis.localStorage; delete globalThis.location; });
-  const { remoteApi } = await import('../dist/runtime.js');
+  const { remoteApi, shareLink } = await import('../dist/runtime.js');
   const players = [player('Arun', '9111111111'), player('Joel', '9222222222')], adults = true, where = centre(0);
 
   let state = await remoteApi('state');
@@ -135,12 +135,14 @@ test('live Pages runtime: public view, official sign-in, roles, conflict retry, 
   // A TV or phone that is not signed in follows practice after opening a practice link.
   await remoteApi('logout');
   state = await remoteApi('state'); assert.equal(state.practice, true); assert.equal(state.isAdmin, false); assert.equal(state.teams.length, 0); assert.equal(state.practiceLinks.live, 'https://sajinct.github.io/carromia/?practice=1#/live');
+  assert.equal(shareLink('/results'), 'https://sajinct.github.io/carromia/?practice=1#/results', 'a practice screen’s results QR opens practice results');
   const { team: practiceTeam } = await remoteApi('register', { name: 'Practice Pair', ...where, players, adults });
   assert.equal(practiceTeam.id, 'CAR-001'); assert.equal(db.rows.practice.state.teams.length, 1); assert.equal(db.rows.main.state.teams.length, 1, 'practice registrations stay out of the real event');
   assert.equal((await remoteApi('state')).teams[0].players[0].mobile, undefined);
   await remoteApi('demo').catch(() => {}); await remoteApi('login', { email: 'omar@example.org', password: 'official-pass' });
   await remoteApi('demo'); assert.equal(db.rows.practice.state.teams.length, 16, 'officials can reload the sample in practice');
   await remoteApi('practice', { on: false }); state = await remoteApi('state'); assert.equal(state.practice, false); assert.equal(state.teams.length, 1);
+  assert.equal(shareLink('/results'), 'https://sajinct.github.io/carromia/#/results'); assert.throws(() => shareLink('/admin'), /Page not found/);
 
   // An admin can turn practice mode off for every device; a device still in it goes back to the real event.
   await remoteApi('practice', { on: true }); await assert.rejects(remoteApi('practice-mode', { on: false }), /Leave practice mode/);

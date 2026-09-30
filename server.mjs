@@ -4,7 +4,7 @@ import { join, extname } from 'node:path';
 import { randomBytes, timingSafeEqual } from 'node:crypto';
 import QRCode from 'qrcode';
 import { fileStore, supabaseStore, ConflictError } from './lib/store.mjs';
-import { emptyState, addTeam, playerPhotos, paymentProof, teamForm, publicTeam, eligible, fail, actions, registrationStatus, defaults } from './lib/tournament.mjs';
+import { emptyState, addTeam, playerPhotos, paymentProof, teamForm, publicTeam, eligible, fail, actions, registrationStatus, defaults, shareRoutes } from './lib/tournament.mjs';
 
 const port = Number(process.env.PORT || 3000);
 const host = process.env.HOST || '127.0.0.1';
@@ -62,6 +62,11 @@ const server = http.createServer(async (req, res) => {
     if (url.pathname === '/api/qr' && req.method === 'GET') {
       const t = state.teams.find(t => t.checkinToken === url.searchParams.get('token')); if (!t) return send(res, 404, { error: 'Team not found.' });
       const qr = await QRCode.toDataURL(`${process.env.PUBLIC_URL || `http://localhost:${port}`}/checkin?token=${t.checkinToken}`, { width: 240, margin: 2, color: { dark: '#172d2c', light: '#ffffff' } }); return send(res, 200, { qr });
+    }
+    if (url.pathname === '/api/link-qr' && req.method === 'GET') {
+      const route = url.searchParams.get('route'); if (!shareRoutes.includes(route)) return send(res, 404, { error: 'Page not found.' });
+      const link = `${process.env.PUBLIC_URL || `http://localhost:${port}`}${route}`;
+      return send(res, 200, { url: link, qr: await QRCode.toDataURL(link, { width: 320, margin: 2, color: { dark: '#172d2c', light: '#ffffff' } }) });
     }
     if (url.pathname.startsWith('/api/') && req.method === 'POST') {
       if (req.headers.origin && req.headers.origin !== `http://${req.headers.host}` && req.headers.origin !== process.env.PUBLIC_URL) return send(res, 403, { error: 'Origin not allowed.' });

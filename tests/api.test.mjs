@@ -35,6 +35,8 @@ test('API protects the desk, persists registration, produces QR, and omits priva
   assert.ok(!readFileSync(join(data, 'tournament.json'), 'utf8').includes('base64')); assert.ok(existsSync(join(data, 'photos', 'CAR-001.json')));
   assert.equal((await fetch(`${base}/api/photos`)).status, 401);
   const qr = await (await fetch(`${base}/api/qr?token=${team.checkinToken}`)).json(); assert.match(qr.qr, /^data:image\/png;base64,/);
+  const results = await (await fetch(`${base}/api/link-qr?route=/results`)).json(); assert.match(results.qr, /^data:image\/png;base64,/); assert.match(results.url, /\/results$/);
+  assert.equal((await fetch(`${base}/api/link-qr?route=/admin`)).status, 404, 'only public pages get a QR code');
   assert.equal(JSON.parse(readFileSync(join(data, 'tournament.json'), 'utf8')).teams.length, 1);
   const login = await post('login', { password: 'test-password' }); assert.equal(login.status, 200); const cookie = login.headers.get('set-cookie').split(';')[0];
   assert.equal((await post('checkin', { token: team.checkinToken }, cookie)).status, 200);

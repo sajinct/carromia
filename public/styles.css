@@ -285,3 +285,47 @@ a.ph-info-link:hover strong,.ph-info>a:hover strong{text-decoration:underline;te
 .round-actions .btn{flex:1;min-width:0;overflow-wrap:anywhere}
 .live-boards .round-strip span{font-size:12px;max-width:88px}
 @media(max-width:580px){.board-team .round-wins{font-size:16px}.round-strip span{font-size:9px;padding:4px 2px}}
+/* Public results page, and the live screen's "scan for results" QR code. */
+.results-page{padding:40px 0 60px}
+.results-page .section-heading{padding:0;margin-bottom:16px;flex-wrap:wrap}
+.results-page .section-heading h2{font-size:20px;color:var(--green)}
+.results-page .search-field{max-width:320px;background:var(--paper)}
+.results-now,.results-list,.results-bracket{margin-top:40px}
+.results-champion{display:flex;align-items:center;gap:22px;flex-wrap:wrap;padding:26px 28px;border-radius:var(--radius);background:linear-gradient(120deg,#193e35,#2d6552);color:#fff}
+.results-champion>.icon{width:44px;height:44px;color:#f7c325;flex-shrink:0}
+.results-champion>div{flex:1;min-width:200px}
+.results-champion span{font-size:10px;font-weight:700;letter-spacing:2px;color:#f7c325}
+.results-champion h2{font-size:28px;margin:6px 0 4px;letter-spacing:-.5px}
+.results-champion p{font-size:13px;color:#cfdcd2}
+.results-champion .runner-up{flex:0 1 auto;min-width:0;padding-left:22px;border-left:1px solid rgba(255,255,255,.2)}
+.results-champion .runner-up span{color:#cfdcd2}
+.results-champion .runner-up strong{display:block;font-size:16px;margin-top:6px}
+.result-round+.result-round{margin-top:28px}
+.result-round h2{display:flex;align-items:baseline;gap:10px;font-size:15px;color:var(--ink);margin-bottom:12px}
+.result-round h2 small{font-size:11px;font-weight:500;color:var(--muted)}
+.result-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px}
+.result-card{background:var(--paper);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden}
+.result-card.live{border-color:#cfe0bd}
+.result-card header{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid #eff2e8;font-size:11px;color:var(--muted)}
+.result-team{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:11px 14px;color:#6f7a68}
+.result-team+.result-team{border-top:1px solid #f2f4ed}
+.result-team>span{display:flex;flex-wrap:wrap;align-items:center;gap:2px 7px;min-width:0}
+.result-team strong{font-size:14px;font-weight:600;overflow-wrap:anywhere}
+.result-team small{flex-basis:100%;font-size:11px;color:#a0a991}
+.result-team b{font-size:20px;font-weight:650;font-variant-numeric:tabular-nums;color:#b7bca9}
+.result-team.won{background:#edf4e5;color:#193e35}
+.result-team.won b{color:#193e35}
+.result-team .icon{width:15px;height:15px;color:#d49a12}
+.result-note{display:block;padding:8px 14px 10px;font-size:11px;color:var(--muted);border-top:1px solid #f2f4ed}
+.results-bracket .bracket{min-height:0}
+.live-heading{display:flex;align-items:center;justify-content:space-between;gap:30px}
+.live-qr{display:flex;align-items:center;gap:18px;flex-shrink:0;padding:14px 20px 14px 14px;background:var(--paper);border:1px solid var(--line);border-radius:var(--radius)}
+.live-qr[hidden]{display:none}
+.live-qr img{width:132px;height:132px;border-radius:6px}
+.live-qr div{display:flex;flex-direction:column;gap:5px;max-width:230px}
+.live-qr span{font-size:10px;font-weight:700;letter-spacing:1.6px;color:#76816b}
+.live-qr strong{font-size:22px;color:var(--green);letter-spacing:-.4px}
+.live-qr small{font-size:12px;color:var(--muted)}
+.live-qr code{font-size:11px;color:#5c6a58;word-break:break-all}
+@media(min-width:1600px){.live-qr img{width:168px;height:168px}.live-qr strong{font-size:26px}}
+@media(max-width:600px){.live-qr{display:none}.results-page{padding:24px 0 40px}.results-page .search-field{max-width:none}.results-champion{padding:22px 20px}.results-champion h2{font-size:23px}.results-champion .runner-up{padding-left:0;border-left:0}.result-cards{grid-template-columns:1fr}}

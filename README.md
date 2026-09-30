@@ -73,6 +73,7 @@ The server binds to **127.0.0.1 only** unless `HOST` is set. It is a local first
 - Four boards, official-controlled assignment, countdowns, board reset and team rest periods.
 - Matches in timed rounds (best of 3 rounds of 10 minutes by default): officials mark each round’s winner as the umpire decides it, start the next round, and the winner advances.
 - Public `/live` screen, bracket, result export, and event settings.
+- Public `/results` page for phones: the champions, the matches on the boards now, every result by round (searchable by team) and the bracket, updating by itself. The live screen shows a **Scan for results** QR code that opens it; a TV in practice mode points phones to the practice results. The QR card is hidden on phone-width screens.
 - Local JSON persistence, realtime server events, full backup download.
 - Web app manifest, install icons, and an offline notice. Match operations require a connection.
 
