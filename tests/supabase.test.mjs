@@ -45,7 +45,7 @@ test('Supabase mode: named officials, roles, audit trail, and conflict-safe save
 
   assert.equal((await state()).authMode, 'supabase');
   // The registration deadline is removed so this test passes on any date.
-  assert.equal((await post('settings', { durationMinutes: 30, resetMinutes: 5, restMinutes: 0, registrationOpen: true, registrationDeadline: '' }, await login('asha@example.org', 'admin-pass'))).status, 200);
+  assert.equal((await post('settings', { gamesPerMatch: 3, gameMinutes: 10, resetMinutes: 5, restMinutes: 0, registrationOpen: true, registrationDeadline: '' }, await login('asha@example.org', 'admin-pass'))).status, 200);
   const players = [player('A One', '9111111111'), player('B Two', '9222222222')];
   for (let i = 1; i <= 4; i++) assert.equal((await post('register', { name: `Team ${i}`, ...centre(0), adults: true, players })).status, 201);
   assert.equal((await post('register', { name: 'Team 5', ...centre(0), adults: true, players })).status, 400, 'at most four teams per parish');

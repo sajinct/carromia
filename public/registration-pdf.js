@@ -1,7 +1,7 @@
 // The printable registration form a team downloads after registering: its details, the check-in QR
 // code, a declaration, the Parish Priest's attestation and the rule book. The desk can make the same
 // PDF again from the saved team. jsPDF is passed in (the browser loads it only when needed).
-import { prizes, timeline, documents, goodToKnow, ruleSections } from './info.js';
+import { prizes, timeline, documents, goodToKnow, ruleSections, formatText } from './info.js';
 
 const green = [25, 62, 53], lime = [222, 237, 185], ink = [36, 51, 46], muted = [110, 118, 108], line = [210, 216, 204], soft = [243, 246, 238];
 const W = 210, H = 297, M = 16, bottom = H - 18;
@@ -104,7 +104,7 @@ export function registrationPdf(jsPDF, { team, event, qr = '', photos = [], logo
   // Rule book.
   doc.addPage(); y = pageTop('Rule book');
   font(9, 'normal', muted);
-  const intro = doc.splitTextToSize(`CARROMIA ${event.year || ''} is an open doubles, thumbing-game knockout. Every match is the best of three games in ${event.durationMinutes ?? 30} minutes.`, W - 2 * M);
+  const intro = doc.splitTextToSize(`CARROMIA ${event.year || ''} is an open doubles, thumbing-game knockout. Every match is ${formatText(event)}.`, W - 2 * M);
   text(intro, M, y); y += intro.length * 4 + 4;
   let number = 0;
   for (const section of ruleSections) {

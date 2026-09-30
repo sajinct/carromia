@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { emptyState, addTeam, createDraw, assign, start, result, eligible, updateSettings, boardReady, removeTeam, practiceEvent, publicState, walkover, undoWalkover, correctResult, unassign, actions, registrationStatus, parishKey, playerPhotos, seedDemo, paymentProof, confirmPayment, checkIn, isConfirmed } from '../lib/tournament.mjs';
+import { emptyState, addTeam, createDraw, assign, start, roundWinner, nextRound, undoRound, eligible, updateSettings, boardReady, removeTeam, practiceEvent, publicState, walkover, undoWalkover, correctResult, unassign, actions, practiceMode, registrationStatus, parishKey, playerPhotos, seedDemo, paymentProof, confirmPayment, checkIn, isConfirmed } from '../lib/tournament.mjs';
 import { centres, groups, findCentre } from '../public/parishes.js';
 import { centre, player, photo } from './registration-fixture.mjs';
 // A team from the i-th parish or centre of the diocese register.
@@ -8,7 +8,11 @@ const entry = (name, i = 0) => ({ name, ...centre(i), adults: true, players: [pl
 // An event without registration limits, so the draw and match tests can use any number of teams on any date.
 function open() { const s = emptyState(); Object.assign(s.event, { maxTeams: 128, maxTeamsPerParish: 128, registrationDeadline: '' }); return s; }
 function setup(n) { const s = open(); for (let i = 1; i <= n; i++) addTeam(s, entry(`Team ${i}`)).checkedIn = true; return s; }
-const MATCH = 30 * 60000, A_WINS = { gamesA: 2, gamesB: 0 }, B_WINS = { gamesA: 1, gamesB: 2 };
+const ROUND = 10 * 60000, A_WINS = ['A', 'A'], B_WINS = ['A', 'B', 'B'];
+// Plays a started match to the end, one round per entry ('A' or 'B' won it), all marked at `at`.
+function play(s, id, sides, at = 0, official) { const m = s.matches.find(m => m.id === id); sides.forEach((side, i) => { if (i) nextRound(s, id, at); roundWinner(s, id, m[`team${side}`], at, official); }); }
+// A correction naming each round's winner.
+const rounds = (m, sides) => Object.fromEntries(sides.map((side, i) => [`round${i + 1}`, m[`team${side}`]]));
 test('registration requires exactly two valid players, unique team names and the 18+ confirmation', () => {
   const s = setup(1);
   assert.throws(() => addTeam(s, { ...entry('New'), players: [] }), /exactly two/); assert.throws(() => addTeam(s, entry('team 1')), /already registered/);
@@ -43,7 +47,7 @@ test('registration records the parish or centre from the register and each playe
   assert.ok(seedDemo().teams.every(t => findCentre(t.forane, t.parish, t.centreType) && t.players.every(p => p.idType && p.idLast4.length === 4)), 'sample teams use the register too');
 });
 test('event settings: payment at registration needs a UPI QR code; support contacts', () => {
-  const s = open(), base = { name: 'Cup', venue: 'Hall', durationMinutes: 30, resetMinutes: 5, restMinutes: 0 }, qr = photo.replace('jpeg', 'png');
+  const s = open(), base = { name: 'Cup', venue: 'Hall', resetMinutes: 5, restMinutes: 0 }, qr = photo.replace('jpeg', 'png');
   assert.throws(() => updateSettings(open(), { ...base, paymentRequired: true }), /Upload the UPI QR code/);
   assert.throws(() => updateSettings(open(), { ...base, upiQr: 'data:image/gif;base64,AAAA' }), /PNG or JPEG/);
   assert.throws(() => updateSettings(open(), { ...base, upiId: 'not an id' }), /valid UPI ID/);
@@ -97,50 +101,64 @@ test('registration limits: team slots, teams per parish, deadline and lunch book
 test('draw handles every team count from 2 to 128 with one champion and n-1 actual matches', () => {
   for (let n = 2; n <= 128; n++) {
     const s = setup(n); createDraw(s, false); s.event.resetMinutes = 0; let clock = 1000000;
-    while (s.matches.some(m => m.status !== 'completed')) { const m = s.matches.find(m => m.status === 'ready'); assert.ok(m, `No ready match for ${n} teams`); assign(s, m.id, 1, clock); start(s, m.id, clock); clock += 600000; result(s, m.id, B_WINS, clock); }
+    while (s.matches.some(m => m.status !== 'completed')) { const m = s.matches.find(m => m.status === 'ready'); assert.ok(m, `No ready match for ${n} teams`); assign(s, m.id, 1, clock); start(s, m.id, clock); clock += 600000; play(s, m.id, B_WINS, clock); }
     assert.ok(s.matches.at(-1).winner); assert.equal(s.matches.filter(m => !m.bye).length, n - 1);
   }
 });
 test('registration closes and a second draw is rejected', () => { const s = setup(4); createDraw(s); assert.equal(s.event.registrationOpen, false); assert.throws(() => createDraw(s), /already exists/); assert.throws(() => addTeam(s, {}), /closed/); });
 test('check-in and board occupancy are enforced', () => { const s = setup(4); createDraw(s, false); s.teams[0].checkedIn = false; assert.throws(() => assign(s, 'M01', 1), /check-in/); s.teams[0].checkedIn = true; assign(s, 'M01', 1); assert.throws(() => assign(s, 'M02', 1), /occupied/); assert.throws(() => assign(s, 'M01', 2), /Not ready/); });
-test('a match lasts 30 minutes; before time is up a result needs a team with two games, and scores are validated', () => {
-  const s = setup(2); createDraw(s); assign(s, 'M01', 1, 0); start(s, 'M01', 0); assert.equal(s.matches[0].endsAt, MATCH);
-  for (const score of [{ gamesA: 1, gamesB: 0, a: 1, b: 2 }, { gamesA: 1, gamesB: 1, a: 0, b: 4 }, { gamesA: 0, gamesB: 0, a: 3, b: 3 }]) assert.throws(() => result(s, 'M01', score, MATCH - 1), /won two games/);
-  for (const gamesA of [-1, 3, 1.5, '', null, undefined, 'x']) assert.throws(() => result(s, 'M01', { gamesA, gamesB: 1, a: 1, b: 2 }, MATCH), /Games won/);
-  assert.throws(() => result(s, 'M01', { gamesA: 2, gamesB: 2 }, MATCH), /only one team can win two games/);
-  for (const a of [-1, 10, 1.5, '', null, undefined, 'NaN']) assert.throws(() => result(s, 'M01', { gamesA: 1, gamesB: 0, a, b: 2 }, MATCH), /whole numbers/);
-  assert.equal(s.matches[0].status, 'playing');
+test('a match is best of three 10-minute rounds; each round’s winner is marked, even before its time is up', () => {
+  const s = setup(4); createDraw(s, false); assign(s, 'M01', 1, 0); start(s, 'M01', 0); const m = s.matches[0];
+  assert.deepEqual([m.gamesPerMatch, m.gameMinutes, m.rounds, m.gamesA, m.gamesB], [3, 10, [{ startedAt: 0, endsAt: ROUND }], 0, 0]); assert.equal(m.endsAt, undefined);
+  assert.throws(() => roundWinner(s, 'M01', 'CAR-999', 1000), /team that won the round/);
+  assert.throws(() => roundWinner(s, 'M02', s.matches[1].teamA, 1000), /not in play/);
+  roundWinner(s, 'M01', m.teamA, 240000, 'Omar Official');
+  assert.deepEqual(m.rounds[0], { startedAt: 0, endsAt: ROUND, winner: m.teamA, endedAt: 240000, official: 'Omar Official' });
+  assert.deepEqual([m.status, m.gamesA, m.gamesB], ['playing', 1, 0]); assert.match(s.activity[0].message, /M01 round 1: Team 1/);
+  // The next round waits for an official to start it, on its own clock.
+  assert.throws(() => roundWinner(s, 'M01', m.teamB, 250000), /Start round 2 first/);
+  nextRound(s, 'M01', 300000); assert.deepEqual(m.rounds[1], { startedAt: 300000, endsAt: 300000 + ROUND });
+  assert.throws(() => nextRound(s, 'M01', 310000), /Round 2 is still being played/);
+  // Marked after the round's time ran out: the umpire decided it.
+  roundWinner(s, 'M01', m.teamB, 300000 + ROUND + 30000); assert.deepEqual([m.status, m.gamesA, m.gamesB], ['playing', 1, 1]);
+  nextRound(s, 'M01', 1000000); roundWinner(s, 'M01', m.teamB, 1200000, 'Omar Official');
+  assert.deepEqual([m.status, m.winner, m.gamesA, m.gamesB, m.completedAt, m.official], ['completed', m.teamB, 1, 2, 1200000, 'Omar Official']);
+  assert.equal(s.boards[0].availableAt, 1200000 + 5 * 60000, 'board reset starts when the match finishes'); assert.match(s.activity[0].message, /M01: Team 4 won \(2–1 in rounds\)/);
+  assert.throws(() => roundWinner(s, 'M01', m.teamB, 1300000), /not in play/);
 });
-test('the first team to win two games wins, even before time is up', () => {
-  const s = setup(4); createDraw(s, false); assign(s, 'M01', 1, 0); start(s, 'M01', 0);
-  result(s, 'M01', B_WINS, 720000, 'Omar Official'); const m = s.matches[0];
-  assert.equal(m.status, 'completed'); assert.equal(m.winner, m.teamB); assert.deepEqual([m.gamesA, m.gamesB, m.coinsA, m.coinsB], [1, 2, undefined, undefined]); assert.equal(m.completedAt, 720000); assert.equal(m.official, 'Omar Official');
-  assert.equal(s.boards[0].availableAt, 720000 + 5 * 60000, 'board reset starts when the match finishes'); assert.match(s.activity[0].message, /M01: Team 4 won \(1–2 in games\)/);
-  assign(s, 'M02', 2, 0); start(s, 'M02', 0); result(s, 'M02', { gamesA: '2', gamesB: '1', a: '', b: '' }, MATCH + 5000); assert.equal(s.matches[1].winner, s.matches[1].teamA, 'form values arrive as text');
+test('a team that wins the first two rounds wins; a match keeps the format it started with', () => {
+  const s = setup(4); createDraw(s, false); assign(s, 'M01', 1, 0); start(s, 'M01', 0); const m = s.matches[0];
+  updateSettings(s, { name: 'Cup', venue: 'Hall', resetMinutes: 5, restMinutes: 0, gamesPerMatch: 5, gameMinutes: 7 });
+  play(s, 'M01', A_WINS, 500000); assert.deepEqual([m.status, m.winner, m.gamesA, m.gamesB, m.rounds.length], ['completed', m.teamA, 2, 0, 2]);
+  assign(s, 'M02', 2, 0); start(s, 'M02', 0); const m2 = s.matches[1];
+  assert.deepEqual([m2.gamesPerMatch, m2.rounds[0].endsAt], [5, 7 * 60000]); play(s, 'M02', ['A', 'A'], 1000); assert.equal(m2.status, 'playing', 'best of five needs three rounds');
+  nextRound(s, 'M02', 2000); roundWinner(s, 'M02', m2.teamA, 3000); assert.equal(m2.status, 'completed');
 });
-test('when time runs out the team with fewer coins left wins, whatever the games', () => {
-  const s = setup(2); createDraw(s, false); assign(s, 'M01', 1, 0); start(s, 'M01', 0);
-  result(s, 'M01', { gamesA: 1, gamesB: 0, a: 5, b: 2 }, MATCH); const m = s.matches[0];
-  assert.equal(m.status, 'completed'); assert.equal(m.winner, m.teamB); assert.deepEqual([m.gamesA, m.gamesB, m.coinsA, m.coinsB], [1, 0, 5, 2]);
-  assert.match(s.activity[0].message, /time up at 1–0 in games, 5–2 coins left/);
+test('the last round’s winner can be taken back while the match is in play', () => {
+  const s = setup(2); createDraw(s, false); assign(s, 'M01', 1, 0); start(s, 'M01', 0); const m = s.matches[0];
+  assert.throws(() => undoRound(s, 'M01', 1000), /No round has been decided/);
+  roundWinner(s, 'M01', m.teamA, 60000); undoRound(s, 'M01', 70000);
+  assert.deepEqual([m.rounds, m.gamesA], [[{ startedAt: 0, endsAt: ROUND }], 0], 'round 1 plays on with its own timer'); assert.match(s.activity[0].message, /round 1 winner \(Team 1\) taken back/);
+  roundWinner(s, 'M01', m.teamB, 80000); nextRound(s, 'M01', 90000); undoRound(s, 'M01', 100000);
+  assert.deepEqual([m.rounds.length, m.rounds[0].winner, m.gamesB], [1, undefined, 0], 'a round started since is cancelled');
 });
-test('equal coins hold the board for the tie-break, which needs a winner and how it was decided', () => {
-  const s = setup(2); createDraw(s, false); assign(s, 'M01', 1, 0); start(s, 'M01', 0); result(s, 'M01', { gamesA: 1, gamesB: 1, a: 3, b: 3 }, MATCH); const m = s.matches[0];
-  assert.equal(m.status, 'tiebreak'); assert.equal(m.winner, null); assert.deepEqual([m.gamesA, m.gamesB, m.coinsA, m.coinsB], [1, 1, 3, 3]);
-  assert.throws(() => result(s, m.id, { gamesA: 1, gamesB: 1, a: 3, b: 3, tieWinner: m.teamA, reason: '' }, MATCH), /how the tie was decided/);
-  assert.throws(() => result(s, m.id, { gamesA: 1, gamesB: 1, a: 3, b: 3, tieWinner: 'CAR-999', reason: 'Golden Pocket' }, MATCH), /tie-break winner/);
-  result(s, m.id, { gamesA: 1, gamesB: 1, a: 3, b: 3, tieWinner: m.teamB, reason: 'Golden Pocket' }, MATCH + 60000);
-  assert.equal(m.status, 'completed'); assert.equal(m.winner, m.teamB); assert.equal(m.tieReason, 'Golden Pocket'); assert.match(s.activity[0].message, /tie-break: Golden Pocket/);
+test('a match started before rounds existed carries on from round 1', () => {
+  const s = setup(2); createDraw(s, false); assign(s, 'M01', 1, 0); const m = s.matches[0];
+  Object.assign(m, { status: 'playing', startedAt: 0, endsAt: 30 * 60000 });
+  assert.throws(() => roundWinner(s, 'M01', m.teamA, 1000), /Start round 1 first/);
+  nextRound(s, 'M01', 2000); assert.deepEqual([m.gamesPerMatch, m.rounds[0].endsAt], [3, 2000 + ROUND]);
 });
-test('winner advances only after both predecessor matches are complete', () => { const s = setup(4); createDraw(s, false); assign(s, 'M01', 1, 0); start(s, 'M01', 0); result(s, 'M01', A_WINS, 600000); assert.equal(s.matches[2].status, 'waiting'); assign(s, 'M02', 2, 0); start(s, 'M02', 0); result(s, 'M02', B_WINS, 600000); assert.equal(s.matches[2].status, 'ready'); assert.equal(s.matches[2].teamA, s.matches[0].winner); assert.equal(s.matches[2].teamB, s.matches[1].winner); });
-test('reset and rest periods block premature scheduling', () => { const s = setup(4); s.event.restMinutes = 10; createDraw(s, false); for (let i = 0; i < 2; i++) { assign(s, s.matches[i].id, i + 1, 1000000); start(s, s.matches[i].id, 1000000); result(s, s.matches[i].id, A_WINS, 1600000); } assert.equal(eligible(s, s.matches[2], 1600000), 'Rest period'); assert.equal(eligible(s, s.matches[2], 2200000), ''); s.event.restMinutes = 0; assert.throws(() => assign(s, 'M03', 1, 1600000), /reset/); assign(s, 'M03', 1, 1900000); assert.equal(s.matches[2].status, 'called'); });
+test('winner advances only after both predecessor matches are complete', () => { const s = setup(4); createDraw(s, false); assign(s, 'M01', 1, 0); start(s, 'M01', 0); play(s, 'M01', A_WINS, 600000); assert.equal(s.matches[2].status, 'waiting'); assign(s, 'M02', 2, 0); start(s, 'M02', 0); play(s, 'M02', B_WINS, 600000); assert.equal(s.matches[2].status, 'ready'); assert.equal(s.matches[2].teamA, s.matches[0].winner); assert.equal(s.matches[2].teamB, s.matches[1].winner); });
+test('reset and rest periods block premature scheduling', () => { const s = setup(4); s.event.restMinutes = 10; createDraw(s, false); for (let i = 0; i < 2; i++) { assign(s, s.matches[i].id, i + 1, 1000000); start(s, s.matches[i].id, 1000000); play(s, s.matches[i].id, A_WINS, 1600000); } assert.equal(eligible(s, s.matches[2], 1600000), 'Rest period'); assert.equal(eligible(s, s.matches[2], 2200000), ''); s.event.restMinutes = 0; assert.throws(() => assign(s, 'M03', 1, 1600000), /reset/); assign(s, 'M03', 1, 1900000); assert.equal(s.matches[2].status, 'called'); });
 test('event defaults follow the poster; settings are validated', () => {
-  const s = emptyState(); assert.equal(s.event.date, '2026-11-15'); assert.equal(s.event.startTime, '09:00'); assert.equal(s.event.durationMinutes, 30);
-  const base = { durationMinutes: 30, resetMinutes: 5, restMinutes: 0 };
+  const s = emptyState(); assert.equal(s.event.date, '2026-11-15'); assert.equal(s.event.startTime, '09:00'); assert.deepEqual([s.event.gamesPerMatch, s.event.gameMinutes], [3, 10]);
+  const base = { resetMinutes: 5, restMinutes: 0 };
   for (const startTime of ['9am', '24:00', '09:60']) assert.throws(() => updateSettings(emptyState(), { ...base, startTime }), /start time/);
   updateSettings(s, { ...base, startTime: '14:30', registrationOpen: true }); assert.equal(s.event.startTime, '14:30'); assert.equal(s.event.registrationOpen, true); assert.equal(s.event.maxTeams, 64, 'limits are kept when not sent');
   updateSettings(s, { ...base, startTime: '' }); assert.equal(s.event.startTime, '');
-  for (const bad of [{ maxTeams: 1 }, { maxTeams: 129 }, { maxTeams: '' }, { maxTeamsPerParish: 0 }, { entryFee: -1 }, { entryFee: 2.5 }]) assert.throws(() => updateSettings(emptyState(), { ...base, ...bad }), /Invalid value/);
+  for (const bad of [{ maxTeams: 1 }, { maxTeams: 129 }, { maxTeams: '' }, { maxTeamsPerParish: 0 }, { entryFee: -1 }, { entryFee: 2.5 }, { gameMinutes: 0 }, { gameMinutes: 31 }]) assert.throws(() => updateSettings(emptyState(), { ...base, ...bad }), /Invalid value/);
+  for (const gamesPerMatch of [0, 2, 4, 7, 'x']) assert.throws(() => updateSettings(emptyState(), { ...base, gamesPerMatch }), /1, 3 or 5/);
+  updateSettings(s, { ...base, gamesPerMatch: '5', gameMinutes: '8' }); assert.deepEqual([s.event.gamesPerMatch, s.event.gameMinutes], [5, 8]);
   for (const registrationDeadline of ['10/11/2026', '2026-13-45', 'soon']) assert.throws(() => updateSettings(emptyState(), { ...base, registrationDeadline }), /registration deadline/);
   updateSettings(s, { ...base, maxTeams: '32', maxTeamsPerParish: '2', entryFee: '750', registrationDeadline: '2026-11-12' });
   assert.deepEqual([s.event.maxTeams, s.event.maxTeamsPerParish, s.event.entryFee, s.event.registrationDeadline], [32, 2, 750, '2026-11-12']);
@@ -149,7 +167,7 @@ test('event defaults follow the poster; settings are validated', () => {
 test('officials can end a board reset early; only a resetting, empty board can be marked ready', () => {
   const s = setup(4); createDraw(s, false); assign(s, 'M01', 1, 0); start(s, 'M01', 0);
   assert.throws(() => boardReady(s, 1, 60000), /match in progress/);
-  result(s, 'M01', A_WINS, 600000); assert.equal(s.boards[0].availableAt, 900000);
+  play(s, 'M01', A_WINS, 600000); assert.equal(s.boards[0].availableAt, 900000);
   assert.throws(() => assign(s, 'M02', 1, 620000), /being reset/);
   boardReady(s, 1, 620000); assert.equal(s.boards[0].availableAt, 620000); assert.match(s.activity[0].message, /Board 1 reset early/);
   assign(s, 'M02', 1, 620000); assert.equal(s.matches[1].board, 1);
@@ -169,10 +187,16 @@ test('the practice event is the sample tournament with the real event details an
   assert.equal(p.practice, true); assert.equal(p.demo, true); assert.equal(p.teams.length, 16); assert.equal(p.event.venue, 'Hall B'); assert.equal(p.event.registrationOpen, false);
   assert.equal(publicState(p).teams[0].players[0].mobile, undefined);
 });
+test('admins turn practice mode off and on from the real event, not from practice', () => {
+  const s = open(); practiceMode(s, false, 1000); assert.equal(s.event.practiceOff, true); assert.match(s.activity[0].message, /Practice mode turned off for all devices/);
+  assert.equal(publicState(s).event.practiceOff, true, 'every device can see it');
+  practiceMode(s, true); assert.equal(s.event.practiceOff, false);
+  assert.throws(() => practiceMode(practiceEvent(s.event), false), /Leave practice mode/);
+});
 test('walkover awards an unplayed match without check-in, starts no rest period, and can be undone', () => {
   const s = setup(4); createDraw(s, false); s.event.restMinutes = 10;
   const [m1, m2, final] = s.matches;
-  assign(s, m2.id, 1, 1000); start(s, m2.id, 1000); result(s, m2.id, A_WINS, 601000);
+  assign(s, m2.id, 1, 1000); start(s, m2.id, 1000); play(s, m2.id, A_WINS, 601000);
   s.teams.find(t => t.id === m1.teamB).checkedIn = false; assert.equal(eligible(s, m1), 'Awaiting check-in');
   assert.throws(() => walkover(s, m1.id, 'CAR-999', ''), /which team/);
   walkover(s, m1.id, m1.teamA, ' Team B absent ', 700000, 'Asha Admin');
@@ -187,36 +211,35 @@ test('walkover awards an unplayed match without check-in, starts no rest period,
   assert.equal(m1.board, null); assert.equal(m1.walkover, 'Opponent did not show'); assert.equal(final.teamA, m1.teamB);
   assign(s, final.id, 2, 1300000); assert.equal(final.board, 2);
 });
-test('a recorded score can be corrected until the next round is called; the bracket is re-derived', () => {
+test('a recorded score can be corrected round by round until the next round is called; the bracket is re-derived', () => {
   const s = setup(4); createDraw(s, false); s.event.resetMinutes = 0;
   const [m1, m2, final] = s.matches;
-  assign(s, m1.id, 1, 0); start(s, m1.id, 0); result(s, m1.id, B_WINS, 600000, 'Omar Official');
+  assign(s, m1.id, 1, 0); start(s, m1.id, 0); play(s, m1.id, B_WINS, 600000, 'Omar Official');
   assert.equal(m1.winner, m1.teamB); assert.equal(m1.official, 'Omar Official');
-  assign(s, m2.id, 2, 0); start(s, m2.id, 0); result(s, m2.id, A_WINS, 600000);
+  assign(s, m2.id, 2, 0); start(s, m2.id, 0); play(s, m2.id, A_WINS, 600000);
   assert.equal(final.status, 'ready'); assert.equal(final.teamA, m1.teamB);
-  for (const bad of [{ gamesA: 3, gamesB: 0 }, { gamesA: '', gamesB: 1 }]) assert.throws(() => correctResult(s, m1.id, bad), /Games won/);
-  for (const bad of [{ gamesA: 1, gamesB: 0, a: 10, b: 0 }, { gamesA: 1, gamesB: 1, a: '', b: 1 }]) assert.throws(() => correctResult(s, m1.id, bad), /whole numbers/);
-  assert.throws(() => correctResult(s, m1.id, { gamesA: 1, gamesB: 1, a: 3, b: 3 }), /tie-break winner/);
+  for (const bad of [{ round1: 'CAR-999', round2: m1.teamA }, { round1: m1.teamA, round3: m1.teamA }]) assert.throws(() => correctResult(s, m1.id, bad), /each round played, in order/);
+  for (const bad of [[], ['A'], ['A', 'B'], ['A', 'A', 'B']]) assert.throws(() => correctResult(s, m1.id, rounds(m1, bad)), /wins 2 rounds/);
   assert.equal(m1.winner, m1.teamB, 'a refused correction changes nothing'); assert.equal(final.status, 'ready');
-  correctResult(s, m1.id, { gamesA: 2, gamesB: 1 }, 700000, 'Asha Admin');
-  assert.equal(m1.winner, m1.teamA); assert.equal(m1.corrected, true); assert.equal(m1.official, 'Asha Admin'); assert.equal(m1.completedAt, 600000, 'the original time is kept');
-  assert.equal(final.status, 'ready'); assert.deepEqual([final.teamA, final.teamB], [m1.teamA, m2.winner]); assert.match(s.activity[0].message, /M01 corrected/);
-  // Corrected to a match that ran out of time: decided on coins left, then on the tie-break.
-  correctResult(s, m1.id, { gamesA: 1, gamesB: 0, a: 4, b: 1 }); assert.equal(m1.winner, m1.teamB); assert.deepEqual([m1.coinsA, m1.coinsB], [4, 1]);
-  correctResult(s, m1.id, { gamesA: 1, gamesB: 1, a: 2, b: 2, tieWinner: m1.teamA, reason: 'Sudden death' }); assert.equal(m1.winner, m1.teamA); assert.equal(m1.tieReason, 'Sudden death'); assert.equal(final.teamA, m1.teamA);
-  correctResult(s, m1.id, B_WINS); assert.equal(m1.winner, m1.teamB); assert.deepEqual([m1.coinsA, m1.tieReason], [undefined, undefined], 'a win on games clears the coins and tie-break');
+  correctResult(s, m1.id, rounds(m1, ['A', 'B', 'A']), 700000, 'Asha Admin');
+  assert.equal(m1.winner, m1.teamA); assert.deepEqual([m1.gamesA, m1.gamesB, m1.rounds.map(r => r.winner)], [2, 1, [m1.teamA, m1.teamB, m1.teamA]]);
+  assert.equal(m1.rounds[0].endedAt, 600000, 'round times are kept'); assert.equal(m1.corrected, true); assert.equal(m1.official, 'Asha Admin'); assert.equal(m1.completedAt, 600000, 'the original time is kept');
+  assert.equal(final.status, 'ready'); assert.deepEqual([final.teamA, final.teamB], [m1.teamA, m2.winner]); assert.match(s.activity[0].message, /M01 corrected: Team 1 won \(2–1 in rounds\)/);
+  correctResult(s, m1.id, rounds(m1, ['B', 'B'])); assert.deepEqual([m1.winner, m1.rounds.length], [m1.teamB, 2]);
   assign(s, final.id, 1, 700000);
-  assert.throws(() => correctResult(s, m1.id, A_WINS), /already on a board/);
-  unassign(s, final.id); correctResult(s, m1.id, A_WINS); assert.equal(final.teamA, m1.teamA);
-  assign(s, final.id, 1, 700000); start(s, final.id, 700000); result(s, final.id, A_WINS, 1300000);
-  assert.throws(() => correctResult(s, m1.id, B_WINS), /already been played/);
-  assert.throws(() => correctResult(s, 'M99', A_WINS), /Only a played/);
+  assert.throws(() => correctResult(s, m1.id, rounds(m1, A_WINS)), /already on a board/);
+  unassign(s, final.id); correctResult(s, m1.id, rounds(m1, A_WINS)); assert.equal(final.teamA, m1.teamA);
+  assign(s, final.id, 1, 700000); start(s, final.id, 700000); play(s, final.id, A_WINS, 1300000);
+  assert.throws(() => correctResult(s, m1.id, rounds(m1, B_WINS)), /already been played/);
+  assert.throws(() => correctResult(s, 'M99', {}), /Only a played/);
 });
 test('the action registry names every desk action and flags the admin-only ones', () => {
-  assert.deepEqual(Object.keys(actions).sort(), ['assign', 'board-ready', 'checkin', 'confirm-payment', 'correct-result', 'demo', 'draw', 'remove-team', 'reset', 'result', 'settings', 'start', 'unassign', 'undo-walkover', 'walkover']);
-  assert.deepEqual(Object.entries(actions).filter(([, a]) => a.admin).map(([k]) => k).sort(), ['correct-result', 'demo', 'draw', 'remove-team', 'reset', 'settings', 'undo-walkover', 'walkover']);
+  assert.deepEqual(Object.keys(actions).sort(), ['assign', 'board-ready', 'checkin', 'confirm-payment', 'correct-result', 'demo', 'draw', 'next-round', 'practice-mode', 'remove-team', 'reset', 'round-winner', 'settings', 'start', 'unassign', 'undo-round', 'undo-walkover', 'walkover']);
+  assert.deepEqual(Object.entries(actions).filter(([, a]) => a.admin).map(([k]) => k).sort(), ['correct-result', 'demo', 'draw', 'practice-mode', 'remove-team', 'reset', 'settings', 'undo-walkover', 'walkover']);
   const s = setup(2); actions.draw.run(s, {}, {}); actions.assign.run(s, { id: 'M01', board: 1 }, { now: 0 }); actions.start.run(s, { id: 'M01' }, { now: 0 });
-  actions.result.run(s, { id: 'M01', gamesA: 2, gamesB: 1 }, { now: 600000, official: 'Asha Admin' }); assert.equal(s.matches[0].official, 'Asha Admin');
-  assert.equal(actions.settings.run(s, { name: 'Cup', venue: 'Hall', durationMinutes: 8, resetMinutes: 2, restMinutes: 0 }, {}), undefined); assert.equal(s.event.name, 'Cup'); assert.match(s.activity[0].message, /settings updated/);
+  const m = s.matches[0]; actions['round-winner'].run(s, { id: 'M01', winner: m.teamA }, { now: 60000, official: 'Asha Admin' }); actions['undo-round'].run(s, { id: 'M01' }, { now: 70000 });
+  actions['round-winner'].run(s, { id: 'M01', winner: m.teamA }, { now: 80000 }); actions['next-round'].run(s, { id: 'M01' }, { now: 90000 }); assert.equal(m.rounds[1].startedAt, 90000);
+  actions['round-winner'].run(s, { id: 'M01', winner: m.teamA }, { now: 600000, official: 'Asha Admin' }); assert.equal(m.official, 'Asha Admin');
+  assert.equal(actions.settings.run(s, { name: 'Cup', venue: 'Hall', gameMinutes: 8, resetMinutes: 2, restMinutes: 0 }, {}), undefined); assert.equal(s.event.name, 'Cup'); assert.match(s.activity[0].message, /settings updated/);
   const fresh = actions.reset.run(s, { confirm: 'RESET' }, {}); assert.equal(fresh.teams.length, 0); assert.equal(fresh.event.name, 'Cup');
 });

@@ -3,7 +3,8 @@
 // the browser and save through save_tournament(), which rejects stale saves so no change is lost.
 // Practice mode: any device opened with ?practice=1 (or switched from the desk) follows the
 // separate 'practice' event instead, so a TV, phones and the desk can rehearse the full flow
-// without touching the real event. It stays on until "Exit practice".
+// without touching the real event. It stays on until "Exit practice", or until an admin turns
+// practice mode off for everyone (practiceOff on the real event), which sends every device back.
 import { emptyState, eligible, fail, freshEvent, publicState, practiceEvent, actions, registrationStatus, defaults, playerPhotos, paymentProof } from './tournament-browser.js';
 import { findCentre } from './parishes.js';
 
@@ -61,6 +62,8 @@ async function syncClock() {
 }
 
 const eventId = () => practiceOn() ? 'practice' : 'main';
+// Whether an admin has turned practice mode off, from the real event's public copy.
+const practiceOff = async () => Boolean((await request('/rest/v1/tournament_public?id=eq.main&select=state'))[0]?.state?.event?.practiceOff);
 async function load(user) {
   const id = eventId();
   const [row] = await request(user ? `/rest/v1/tournament?id=eq.${id}&select=version,state` : `/rest/v1/tournament_public?id=eq.${id}&select=version,state`, { token: user?.token });
@@ -116,9 +119,10 @@ async function changePassword(input) {
 
 // What the screens render: the followed event, with private details only for officials.
 async function view(user) {
+  if (practiceOn() && await practiceOff()) setPractice(false);
   const { state } = await load(user), practice = eventId() === 'practice';
   const { teams } = state;
-  return { ...state, event: { ...defaults, ...state.event }, practice, practiceAvailable: Boolean(user) || practice, practiceLinks: practice ? { live: practiceLink('/live'), register: practiceLink('/register'), desk: practiceLink('/admin') } : null, teams, activity: user ? state.activity : [], matches: state.matches.map(m => ({ ...m, blockedReason: eligible(state, m, now()) })), registration: registrationStatus({ ...state, practice }, now()), isAdmin: Boolean(user), user: user && { name: user.name, role: user.role }, authMode: 'supabase', localDemo: false, serverTime: now() };
+  return { ...state, event: { ...defaults, ...state.event }, practice, practiceAvailable: !state.event.practiceOff && (Boolean(user) || practice), practiceLinks: practice ? { live: practiceLink('/live'), register: practiceLink('/register'), desk: practiceLink('/admin') } : null, teams, activity: user ? state.activity : [], matches: state.matches.map(m => ({ ...m, blockedReason: eligible(state, m, now()) })), registration: registrationStatus({ ...state, practice }, now()), isAdmin: Boolean(user), user: user && { name: user.name, role: user.role }, authMode: 'supabase', localDemo: false, serverTime: now() };
 }
 
 // Officials are managed by the 'officials' Edge Function (supabase/functions/officials), which holds
@@ -134,7 +138,7 @@ export async function remoteApi(path, input = {}) {
   // Check-in QR codes keep the device in the same event (a practice QR opens practice mode).
   if (path.startsWith('qr?')) { const token = encodeURIComponent(new URLSearchParams(path.slice(3)).get('token')); return qrCode(practiceOn() ? practiceLink(`/checkin?token=${token}`) : `${siteUrl()}#/checkin?token=${token}`); }
   if (path.startsWith('practice-qr?')) return qrCode(practiceLink(new URLSearchParams(path.slice(12)).get('route')));
-  if (path === 'practice') { setPractice(input.on === true); return { ok: true }; }
+  if (path === 'practice') { fail(input.on === true && await practiceOff(), 'Practice mode is turned off by the event admin.'); setPractice(input.on === true); return { ok: true }; }
   await syncClock();
   if (path === 'login') return signIn(input);
   if (path === 'change-password') return changePassword(input);

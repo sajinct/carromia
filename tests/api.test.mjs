@@ -15,7 +15,7 @@ async function serve(t, port, env = {}) {
   const post = (path, body, cookie = '') => fetch(`${base}/api/${path}`, { method: 'POST', headers: { 'Content-Type': 'application/json', Cookie: cookie }, body: JSON.stringify(body) });
   const login = async () => (await post('login', { password: 'test-password' })).headers.get('set-cookie').split(';')[0];
   // The registration deadline is removed so these tests pass on any date.
-  assert.equal((await post('settings', { durationMinutes: 30, resetMinutes: 5, restMinutes: 0, registrationOpen: true, registrationDeadline: '' }, await login())).status, 200);
+  assert.equal((await post('settings', { gamesPerMatch: 3, gameMinutes: 10, resetMinutes: 5, restMinutes: 0, registrationOpen: true, registrationDeadline: '' }, await login())).status, 200);
   return { base, data, post, login };
 }
 // A team from the i-th parish or centre of the diocese register, with ID proofs and photos.
@@ -54,7 +54,7 @@ test('registration is rate limited per connection', async t => {
 });
 test('payment at registration: pending until an official confirms it; the form needs the primary mobile', async t => {
   const { base, data, post, login } = await serve(t, 3102); const cookie = await login(), qr = photo.replace('jpeg', 'png');
-  assert.equal((await post('settings', { durationMinutes: 30, resetMinutes: 5, restMinutes: 0, registrationOpen: true, registrationDeadline: '', paymentRequired: true, upiQr: qr, contacts: [{ name: 'Fr. Joseph', phone: '9876543210' }] }, cookie)).status, 200);
+  assert.equal((await post('settings', { gamesPerMatch: 3, gameMinutes: 10, resetMinutes: 5, restMinutes: 0, registrationOpen: true, registrationDeadline: '', paymentRequired: true, upiQr: qr, contacts: [{ name: 'Fr. Joseph', phone: '9876543210' }] }, cookie)).status, 200);
   const before = await (await fetch(`${base}/api/state`)).json(); assert.equal(before.event.upiQr, qr); assert.deepEqual(before.event.contacts, [{ name: 'Fr. Joseph', phone: '9876543210' }]);
   assert.equal((await post('register', entry(1))).status, 400, 'a UTR or a screenshot is needed');
   const reg = await post('register', { ...entry(1), payment: { txnRef: '412356789012', screenshot: photo } });
@@ -84,10 +84,10 @@ test('removing a team or starting a fresh event deletes player photos', async t 
 });
 test('loading the sample tournament keeps event details and timings', async t => {
   const { base, post, login } = await serve(t, 3099); const cookie = await login();
-  assert.equal((await post('settings', { name: 'Parish Cup', year: '2027', venue: 'Hall B', date: '2027-01-10', durationMinutes: 12, resetMinutes: 3, restMinutes: 5, registrationOpen: true }, cookie)).status, 200);
+  assert.equal((await post('settings', { name: 'Parish Cup', year: '2027', venue: 'Hall B', date: '2027-01-10', gameMinutes: 12, resetMinutes: 3, restMinutes: 5, registrationOpen: true }, cookie)).status, 200);
   assert.equal((await post('demo', {}, cookie)).status, 200);
   const state = await (await fetch(`${base}/api/state`, { headers: { Cookie: cookie } })).json();
-  assert.equal(state.teams.length, 16); assert.equal(state.event.name, 'Parish Cup'); assert.equal(state.event.venue, 'Hall B'); assert.equal(state.event.durationMinutes, 12); assert.equal(state.event.registrationOpen, false);
+  assert.equal(state.teams.length, 16); assert.equal(state.event.name, 'Parish Cup'); assert.equal(state.event.venue, 'Hall B'); assert.equal(state.event.gameMinutes, 12); assert.equal(state.event.registrationOpen, false);
 });
 test('live connections are capped', async t => {
   const { base } = await serve(t, 3100, { MAX_STREAMS: '1' }); const controller = new AbortController(); t.after(() => controller.abort());

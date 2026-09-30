@@ -38,7 +38,8 @@ export const goodToKnow = [
   'The tournament desk may refuse check-in if a player, their ID proof or the attested form does not match the registration.'
 ];
 
-// Rules are numbered 1–16 across the sections, as on the poster.
+// Rules are numbered across the sections, as on the poster, with rule 16 added on marking each game
+// on the app (the poster's rule 16 is now 17).
 export const ruleSections = [
   { title: 'General format & tournament structure', rules: [
     'All India Carrom Federation (AICF) standards.',
@@ -67,11 +68,14 @@ export const ruleSections = [
     'If the Golden Pocket (rule 13) is also a draw, the match goes to sudden death: the teams toss a coin for the first chance to pocket a coin, and the team that pockets first will qualify for the next round.'
   ] },
   { title: 'Umpire decision', rules: [
-    'The umpire’s decision will be final (KSCA umpires only).'
+    'The umpire’s decision will be final (KSCA umpires only).',
+    'The umpire decides each game, including when its time runs out, and an official marks the winning team on the tournament app. The next game begins when the official starts it.'
   ] },
   { title: 'Player conduct', rules: [
     'Each player is to use their own idea; no prompting or suggestions from the partner are allowed while playing the game.'
   ] }
 ];
 
-export const tieMethods = ['Golden Pocket', 'Sudden death'];
+// The match format from Event settings: best of 3 rounds (games) of 10 minutes by default.
+export const matchFormat = event => ({ rounds: event.gamesPerMatch ?? 3, minutes: event.gameMinutes ?? 10 });
+export const formatText = event => { const { rounds, minutes } = matchFormat(event); return rounds === 1 ? `one round of ${minutes} minutes` : `the best of ${rounds} rounds, ${minutes} minutes each`; };

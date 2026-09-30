@@ -219,8 +219,6 @@ a.ph-info-link:hover strong,.ph-info>a:hover strong{text-decoration:underline;te
 .confirmation-notes{text-align:left}
 .confirmation-notes strong,.confirmation-notes span{display:block}
 .confirmation-notes span{margin-top:6px}
-.time-up-fields{margin-top:0}
-.time-up-fields .form-note{margin:0 0 12px}
 .settings-panel .text-link{font-size:12px}
 .settings-panel .text-link .icon{width:13px;height:13px}
 @media(max-width:1100px){.info-grid{grid-template-columns:1fr 1fr}.day-plan{gap:40px}}
@@ -273,3 +271,17 @@ a.ph-info-link:hover strong,.ph-info>a:hover strong{text-decoration:underline;te
 @media(max-width:580px){.upi-setting{flex-direction:column}.teams-page{padding:24px 0 40px}}
 .support-card{background:#ebefe2;padding:18px 20px;border-radius:10px;font-size:12px;margin-top:14px}
 .support-card>strong{margin-left:10px}
+/* Rounds: each team's rounds won, a strip of round winners, and the umpire's round-winner buttons. */
+.board-team .round-wins{margin-left:auto;font-size:22px;font-weight:650;color:#193e35;font-variant-numeric:tabular-nums;min-width:24px;text-align:right}
+.live-boards .board-team .round-wins{font-size:30px}
+.round-strip{display:flex;gap:6px;justify-content:center;margin:12px 0 0}
+.round-strip span{flex:1;max-width:72px;display:flex;flex-direction:column;align-items:center;gap:2px;padding:6px 4px;border-radius:8px;background:#f5f6f1;color:#b7bca9;font-size:10px;font-weight:600}
+.round-strip small{font-size:8px;letter-spacing:1px;font-weight:500;color:#a0a991}
+.round-strip .won{background:#ecf3e5;color:#193e35}
+.round-strip .live{background:#faecd9;color:#a1703b}
+.board-card.between .timer-area>strong{color:#193e35}
+.round-actions{flex-wrap:wrap}
+.round-actions>small{flex-basis:100%;font-size:10px;letter-spacing:.8px;color:#a0a991;text-transform:uppercase}
+.round-actions .btn{flex:1;min-width:0;overflow-wrap:anywhere}
+.live-boards .round-strip span{font-size:12px;max-width:88px}
+@media(max-width:580px){.board-team .round-wins{font-size:16px}.round-strip span{font-size:9px;padding:4px 2px}}

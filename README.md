@@ -31,9 +31,10 @@ https://sajinct.github.io/carromia/ is the live event site. The static app talks
 - **Registration** is open on the real event as soon as the setup is run. It closes when an admin unticks *Registration open* in Settings or creates the draw, at the end of the registration deadline day (10 Nov 2026, India time), or when every team slot is taken (64). One parish can register up to 4 teams; parish names are compared without capitals, punctuation or the words "church" and "parish". Players confirm they are 18 or older and can pre-book lunch. Slots, teams per parish, deadline and entry fee are changed in **Event settings**; the deadline does not apply in practice mode.
 - **Event information and rules** shown on the home page and the **Rules** page (prizes, day schedule, Mass timings, documents to bring, the 16 rules) are in `public/info.js`.
 - **Practice mode** rehearses the whole event on a separate practice tournament, on any device. An official opens it from Settings → Open practice mode; the panel then shows links and QR codes for a **TV** (live boards), **phones** (registration) and **official phones** (desk). Any device opened with `?practice=1` follows the practice event and shows a yellow PRACTICE MODE banner until someone taps **Exit practice**. **Start empty practice** clears practice teams and opens practice registration (register → check in → draw → play → winners); **Load sample tournament** gives a ready-made draw. The public site and real registrations are never affected, and any official may try every action in practice.
+- **Turning practice mode off** (admins, from the real event): Settings → Practice mode → **Turn off for all devices**. No one can open practice mode, devices still in it go back to the real event at their next refresh, and practice links open the real event. Practice data is kept; **Turn practice mode back on** in the same panel restores it.
 - **Removing a team** (admins, real event, before the draw): Teams → Remove. The team and its contact details are deleted and its ID is never reused. After the draw, teams can’t be removed because the bracket depends on them.
 - **Walkover / no-show** (admins): Match control → queue → **Walkover**. Choose the team that advances and a reason; the match is completed without play, no check-in or rest period is needed, and later rounds update. **Results → Undo walkover** puts it back in the queue while the next round hasn’t been called.
-- **Correcting a result** (admins): Results → **Correct**. Enter the right games won, or the coins left if time ran out (and the tie-break if equal); the winner is worked out again and later rounds are re-derived. Possible only until the winner’s next match is called; the original time is kept and the result is marked *Corrected*.
+- **Correcting a result** (admins): Results → **Correct**. Choose the winner of each round, in order, up to the round that decided the match; the winner is worked out again and later rounds are re-derived. Possible only until the winner’s next match is called; the original time is kept and the result is marked *Corrected*.
 - **Starting over** (admins): Settings → Start a fresh event → type `RESET`. It clears teams, matches and results, keeps the event details and reopens registration.
 
 ### Preview the build locally
@@ -70,7 +71,7 @@ The server binds to **127.0.0.1 only** unless `HOST` is set. It is a local first
 - Password-protected desk with check-in, searchable teams, and contact details.
 - Randomized single-elimination draw for 2–128 teams with automatic byes.
 - Four boards, official-controlled assignment, countdowns, board reset and team rest periods.
-- Best-of-three results (games won), coins left (0–9) when the 30 minutes run out, recorded tie-breaks (Golden Pocket, sudden death), and winner advancement.
+- Matches in timed rounds (best of 3 rounds of 10 minutes by default): officials mark each round’s winner as the umpire decides it, start the next round, and the winner advances.
 - Public `/live` screen, bracket, result export, and event settings.
 - Local JSON persistence, realtime server events, full backup download.
 - Web app manifest, install icons, and an offline notice. Match operations require a connection.
@@ -83,11 +84,11 @@ The empty initial event has no fictional registrations. Use **Load sample tourna
 2. Register teams through `/register` and check them in at the desk.
 3. Review the team list, then create the draw. This closes registration.
 4. Assign eligible matches to free boards and press Start match when players are ready.
-5. A match is the best of three games in 30 minutes. As soon as a team has won two games, press **Two games won · End match** and enter the games won. If the time runs out first, press **Record result**, enter the games won so far and the coins each team has left on the board; the team with fewer coins left wins.
-6. Equal coin counts keep the board occupied for the tie-break: Golden Pocket (3 coins each, most pocketed wins), then sudden death. The official records the winner and which of the two decided it.
+5. A match is played in rounds, each with its own timer (best of 3 rounds of 10 minutes by default). When the umpire decides a round, whether or not its time has run out, press that team’s button under **Round N won by** on the board and confirm. Then press **Start round N** once the players have changed seats. A mis-tap can be taken back with ↩ while the match is in play.
+6. The first team to win most of the rounds (2 of 3) wins the match; the live screen shows the round in play, its timer and the rounds won.
 7. Winners advance automatically. Boards become available after their reset period.
 
-Existing match timers keep the duration set at their start. Settings affect future starts. The default is a 30-minute match, 5 minutes board reset, and no mandatory team rest until the committee confirms one. For quick local testing, set matches to 1 minute and board reset to 0; restore event settings afterward.
+A match keeps the rounds and round length set when it started; settings affect future starts. The default is 3 rounds of 10 minutes, 5 minutes board reset, and no mandatory team rest until the committee confirms one. For quick local testing, set rounds to 1 minute and board reset to 0; restore event settings afterward.
 
 QR URLs use `PUBLIC_URL` if provided, otherwise `http://localhost:3000`. A phone cannot reach this local preview via its own localhost. Configure an HTTPS public origin and production hosting before distributing codes to players. A QR opens a check-in confirmation for a signed-in official; scanning alone never changes attendance.
 
@@ -122,10 +123,10 @@ Without Supabase, data lives in `data/tournament.json` (or the `DATA_DIR` enviro
 npm test
 ```
 
-Tests cover bracket completion for every team count from 2–128, byes, registration limits and the deadline, check-in and occupancy guards, timing, rest periods, best-of-three and time-up results, invalid scores, ties, winner dependencies, API access control, private contact filtering, persistence, and QR generation.
+Tests cover bracket completion for every team count from 2–128, byes, registration limits and the deadline, check-in and occupancy guards, timing, rest periods, marking, starting and taking back rounds, result corrections, winner dependencies, API access control, private contact filtering, persistence, and QR generation.
 
 ## Before a real event
 
 This release is a local functional prototype. Production setup remains: HTTPS hosting, abuse protection beyond the basic per-connection registration limit (30 per 10 minutes), and backup/restore operations. Supabase storage and named officials are available (see above); desk sign-ins are held in server memory, so a restart signs officials out. It does not support concurrent server instances or draw editing; a result can be corrected only until the winner’s next match is called.
 
-The entry fee is shown but not collected or tracked by the app. The rules page and home page describe the published rules (best of three games in 30 minutes); if the committee changes them, update `public/info.js` as well as the timer setting.
+The entry fee is shown but not collected or tracked by the app. The rules page and home page describe the published rules (best of three games, 10 minutes each); if the committee changes them, update `public/info.js` as well as the rounds settings.

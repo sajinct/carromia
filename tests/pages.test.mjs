@@ -142,6 +142,17 @@ test('live Pages runtime: public view, official sign-in, roles, conflict retry, 
   await remoteApi('demo'); assert.equal(db.rows.practice.state.teams.length, 16, 'officials can reload the sample in practice');
   await remoteApi('practice', { on: false }); state = await remoteApi('state'); assert.equal(state.practice, false); assert.equal(state.teams.length, 1);
 
+  // An admin can turn practice mode off for every device; a device still in it goes back to the real event.
+  await remoteApi('practice', { on: true }); await assert.rejects(remoteApi('practice-mode', { on: false }), /Leave practice mode/);
+  await remoteApi('practice', { on: false }); await assert.rejects(remoteApi('practice-mode', { on: false }), /Only an event admin/);
+  await remoteApi('logout'); await remoteApi('login', { email: 'asha@example.org', password: 'admin-pass' });
+  await remoteApi('practice-mode', { on: false }); assert.equal(db.public.state.event.practiceOff, true);
+  memory.set('carromia-practice', 'on');
+  state = await remoteApi('state'); assert.deepEqual([state.practice, state.practiceAvailable, memory.has('carromia-practice')], [false, false, false]);
+  await assert.rejects(remoteApi('practice', { on: true }), /turned off by the event admin/);
+  await remoteApi('practice-mode', { on: true }); assert.equal((await remoteApi('state')).practiceAvailable, true);
+  await remoteApi('logout'); await remoteApi('login', { email: 'omar@example.org', password: 'official-pass' });
+
   // Team removal: admin only, real event before the draw.
   await assert.rejects(remoteApi('remove-team', { id: 'CAR-001' }), /Only an event admin/);
   await remoteApi('logout'); await remoteApi('login', { email: 'asha@example.org', password: 'admin-pass' });
@@ -151,6 +162,6 @@ test('live Pages runtime: public view, official sign-in, roles, conflict retry, 
   assert.equal((await remoteApi('register', { name: 'Next Team', ...where, players, adults })).team.id, 'CAR-002', 'removed IDs are not reused');
 
   assert.deepEqual(db.saves.map(s => `${s.event}:${s.by}:${s.action}`), ['main:Omar Official:unassign', 'main:Omar Official:assign', 'main:Omar Official:start', 'main:Omar Official:checkin', 'main:Asha Admin:reset',
-    'practice:Omar Official:unassign', 'practice:Omar Official:assign', 'practice:Omar Official:reset', 'practice:Omar Official:demo', 'main:Asha Admin:remove-team']);
+    'practice:Omar Official:unassign', 'practice:Omar Official:assign', 'practice:Omar Official:reset', 'practice:Omar Official:demo', 'main:Asha Admin:practice-mode', 'main:Asha Admin:practice-mode', 'main:Asha Admin:remove-team']);
   assert.equal((await remoteApi('state')).isAdmin, false);
 });
