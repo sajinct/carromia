@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { readFileSync, existsSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { seedDemo, publicState, addTeam, teamForm, thumbPath } from '../lib/tournament.mjs';
+import { seedDemo, publicState, addTeams, teamForm, groupForm, thumbPath } from '../lib/tournament.mjs';
 import { centre, player, photo } from './registration-fixture.mjs';
 const root = join(import.meta.dirname, '..');
 // The registration Edge Function runs against the same stand-in, with the service key.
@@ -47,7 +47,7 @@ function fakeSupabase() {
       return reply(200, body.paths.map(path => ({ path, signedURL: db.files.has(`team-files/${path}`) ? `/object/sign/team-files/${path}?token=signed` : null, error: null })));
     }
     if (/^\/storage\/v1\/object\/[\w-]+$/.test(url.pathname) && init.method === 'DELETE') { if (!service) return reply(403, {}); for (const name of body.prefixes) db.files.delete(`${url.pathname.split('/').pop()}/${name}`); return reply(200, []); }
-    if (['/rest/v1/rpc/register_team', '/rest/v1/rpc/team_form', '/rest/v1/rpc/unreferenced_files'].includes(url.pathname) && !service) return reply(404, { message: 'Could not find the function in the schema cache' });
+    if (['/rest/v1/rpc/register_teams', '/rest/v1/rpc/team_form', '/rest/v1/rpc/group_form', '/rest/v1/rpc/unreferenced_files'].includes(url.pathname) && !service) return reply(404, { message: 'Could not find the function in the schema cache' });
     switch (url.pathname) {
       case '/rest/v1/rpc/server_time': return reply(200, Date.now());
       case '/rest/v1/tournament_public': return reply(200, db.pub[id] ? [structuredClone(db.pub[id])] : []);
@@ -67,14 +67,23 @@ function fakeSupabase() {
         if (init.method === 'PUT') { if (body.password === caller.password) return reply(422, { msg: 'New password should be different from the old password.' }); caller.password = body.password; }
         return reply(200, { id: caller.id, email: Object.keys(users).find(email => users[email] === caller) });
       }
-      case '/rest/v1/rpc/register_team': {
+      case '/rest/v1/rpc/register_teams': {
         const main = db.rows[body.p_event ?? 'main'];
         if (main.state.demo) return reply(400, { message: 'Registration will open soon. Please check back.' });
         // The pictures are paths of files already uploaded, which must exist.
-        const event = body.p_event ?? 'main', paths = body.p_players.map(p => p.photo), shot = body.p_payment?.screenshot;
-        if (paths.some(p => !p.startsWith(`${event}/`) || !db.files.has(`team-files/${p}`))) return reply(400, { message: 'Add a photo of each player (a JPEG under 4 MB).' });
-        try { const team = addTeam(main.state, { name: body.p_name, forane: body.p_forane, parish: body.p_parish, centreType: body.p_centre_type, players: body.p_players, payment: body.p_payment && { ...body.p_payment, screenshot: shot ? photo : '' }, primaryContact: body.p_primary, lunch: body.p_lunch, adults: body.p_adults }); paths.forEach((path, player) => db.photos.push({ event, team_id: team.id, player, path })); if (shot) db.proofs.push({ event, team_id: team.id, path: shot }); main.version++; db.pub[event] = { version: main.version, state: publicState(main.state) }; return reply(200, { team }); }
+        const event = body.p_event ?? 'main', paths = body.p_teams.map(t => t.players.map(p => p.photo)), shot = body.p_payment?.screenshot;
+        if (paths.flat().some(p => !p.startsWith(`${event}/`) || !db.files.has(`team-files/${p}`))) return reply(400, { message: 'Add a photo of each player (a JPEG under 4 MB).' });
+        if (shot && !db.files.has(`team-files/${shot}`)) return reply(400, { message: 'Add the payment screenshot as a picture under 4 MB.' });
+        try {
+          const teams = addTeams(main.state, { forane: body.p_forane, parish: body.p_parish, centreType: body.p_centre_type, teams: body.p_teams, coordinator: body.p_coordinator, payment: body.p_payment && { ...body.p_payment, screenshot: shot ? photo : '' }, adults: body.p_adults });
+          teams.forEach((team, j) => { paths[j].forEach((path, player) => db.photos.push({ event, team_id: team.id, player, path })); if (shot) db.proofs.push({ event, team_id: team.id, path: shot }); });
+          main.version++; db.pub[event] = { version: main.version, state: publicState(main.state) }; return reply(200, { teams });
+        }
         catch (error) { return reply(400, { message: error.message }); }
+      }
+      case '/rest/v1/rpc/group_form': {
+        try { const teams = groupForm(db.rows[body.p_event].state, body.p_group_id, body.p_mobile); return reply(200, { teams: teams.map(team => ({ team, photos: db.photos.filter(p => p.event === body.p_event && p.team_id === team.id).map(p => p.path) })) }); }
+        catch (error) { return /doesn’t match/.test(error.message) ? reply(200, { error: error.message }) : reply(400, { message: error.message }); }
       }
       case '/rest/v1/rpc/team_form': {
         try { const team = teamForm(db.rows[body.p_event].state, body.p_team_id, body.p_mobile); return reply(200, { team, photos: db.photos.filter(p => p.event === body.p_event && p.team_id === team.id).map(p => p.path) }); }
@@ -154,8 +163,7 @@ test('live Pages runtime: public view, official sign-in, roles, conflict retry, 
   assert.match(photo1, /^main\/[0-9a-f-]{36}\/player-1\.jpg$/); assert.equal(db.files.size, 4); assert.equal(db.files.get(`team-files/${photo1}`).type, 'image/jpeg');
   assert.deepEqual(Buffer.from(db.files.get(`team-files/${photo1}`).bytes), Buffer.from(photo.split(',')[1], 'base64'));
   // Browsers can't register (or upload) without the Edge Function.
-  assert.equal((await db.fetch(`${SUPABASE}/rest/v1/rpc/register_team`, { method: 'POST', headers: { apikey: PUBLISHABLE, 'Content-Type': 'application/json' }, body: '{}' })).status, 404);
-
+  assert.equal((await db.fetch(`${SUPABASE}/rest/v1/rpc/register_teams`, { method: 'POST', headers: { apikey: PUBLISHABLE, 'Content-Type': 'application/json' }, body: '{}' })).status, 404);
   // Practice mode: a separate sample event; the real event and the public copy are untouched.
   await remoteApi('login', { email: 'omar@example.org', password: 'official-pass' });
   assert.deepEqual(await remoteApi('photos'), { 'CAR-001': [photo1, photo2].map(p => `${SUPABASE}/storage/v1/object/sign/team-files/${thumbPath(p)}?token=signed`) });
@@ -212,4 +220,26 @@ test('live Pages runtime: public view, official sign-in, roles, conflict retry, 
   assert.deepEqual(db.saves.map(s => `${s.event}:${s.by}:${s.action}`), ['main:Omar Official:unassign', 'main:Omar Official:assign', 'main:Omar Official:start', 'main:Omar Official:checkin', 'main:Asha Admin:reset',
     'practice:Omar Official:unassign', 'practice:Omar Official:assign', 'practice:Omar Official:reset', 'practice:Omar Official:demo', 'main:Asha Admin:practice-mode', 'main:Asha Admin:practice-mode', 'main:Asha Admin:remove-team']);
   assert.equal((await remoteApi('state')).isAdmin, false);
+});
+test('live Pages runtime: a parish registers several teams at once; the coordinator downloads every form', async t => {
+  const db = fakeSupabase(), memory = new Map(), realFetch = globalThis.fetch;
+  globalThis.localStorage = { getItem: key => memory.get(key) ?? null, setItem: (key, value) => memory.set(key, value), removeItem: key => memory.delete(key) };
+  globalThis.fetch = db.fetch; globalThis.location = { origin: 'https://sajinct.github.io', pathname: '/carromia/', search: '' };
+  t.after(() => { globalThis.fetch = realFetch; delete globalThis.localStorage; delete globalThis.location; });
+  const { remoteApi } = await import('../dist/runtime.js');
+  await remoteApi('login', { email: 'asha@example.org', password: 'admin-pass' }); await remoteApi('reset', { confirm: 'RESET' }); await remoteApi('logout');
+
+  const parish = centre(3), adults = true, coordinator = { name: 'Fr. Coord', mobile: '9900000000' }, pair = name => [player(`${name} A`, '9333333333'), player(`${name} B`, '9444444444')];
+  await assert.rejects(remoteApi('register', { ...parish, adults, coordinator, teams: [{ name: 'Alpha', players: pair('Alpha') }, { name: 'Beta', players: [player('B1'), player('B2', '9000000001', false)] }] }), /photo of each player/);
+  await assert.rejects(remoteApi('register', { ...parish, adults, teams: [{ name: 'Alpha', players: pair('Alpha') }, { name: 'Beta', players: pair('Beta') }] }), /parish coordinator/);
+  assert.equal(db.files.size, 0, 'a refused registration leaves no files');
+  const { teams } = await remoteApi('register', { ...parish, adults, coordinator, teams: [{ name: 'Alpha', players: pair('Alpha'), lunch: 2 }, { name: 'Beta', players: pair('Beta'), primaryContact: 1 }] });
+  assert.deepEqual(teams.map(g => [g.id, g.group.id, g.group.size, g.status]), [['CAR-001', 'CAR-001', 2, 'confirmed'], ['CAR-002', 'CAR-001', 2, 'confirmed']]);
+  assert.equal(db.files.size, 8, 'two photos and two thumbnails per team');
+  assert.deepEqual(db.public.state.teams[1].group, { id: 'CAR-001', size: 2 }); assert.ok(!JSON.stringify(db.public).includes('9900000000'), 'the coordinator’s number is not public');
+  await assert.rejects(remoteApi('group-form', { id: 'CAR-001', mobile: '9333333333' }), /parish coordinator/);
+  const { forms } = await remoteApi('group-form', { id: 'car-001', mobile: '9900000000' });
+  assert.deepEqual(forms.map(g => g.team.id), ['CAR-001', 'CAR-002']); assert.ok(forms.every(g => typeof g.qr === 'string' && g.team.checkinToken === undefined));
+  assert.equal(new Set(forms.flatMap(g => g.photos)).size, 4, 'each team’s own thumbnails');
+  assert.equal((await remoteApi('team-form', { id: 'CAR-002', mobile: '9900000000' })).team.id, 'CAR-002', 'the coordinator can download one team’s form too');
 });

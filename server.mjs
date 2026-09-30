@@ -4,7 +4,7 @@ import { join, extname } from 'node:path';
 import { randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
 import QRCode from 'qrcode';
 import { fileStore, supabaseStore, ConflictError } from './lib/store.mjs';
-import { emptyState, addTeam, playerPhotos, paymentProof, teamForm, publicTeam, eligible, fail, actions, registrationStatus, defaults, shareRoutes, teamFiles, thumbPath, teamFilePath, assetPath, upiQrImage } from './lib/tournament.mjs';
+import { emptyState, addTeams, playerPhotos, paymentProof, teamForm, groupForm, publicTeam, eligible, fail, actions, registrationStatus, defaults, shareRoutes, teamFiles, thumbPath, teamFilePath, assetPath, upiQrImage, maxGroupTeams, maxPhotoLength, maxThumbLength, maxScreenshotLength } from './lib/tournament.mjs';
 
 const port = Number(process.env.PORT || 3000);
 const host = process.env.HOST || '127.0.0.1';
@@ -48,6 +48,8 @@ function view(user) {
 // A team's QR code: the check-in desk's, or the lunch counter's on its lunch coupons.
 const teamQr = (token, route) => QRCode.toDataURL(`${process.env.PUBLIC_URL || `http://localhost:${port}`}${route}?token=${token}`, { width: 240, margin: 2, color: { dark: '#172d2c', light: '#ffffff' } });
 const bytes = data => Buffer.from(data.slice(data.indexOf(',') + 1), 'base64');
+// The largest registration: a full group's photos and thumbnails, a screenshot, and the details.
+const registerLimit = maxGroupTeams * 2 * (maxPhotoLength + maxThumbLength) + maxScreenshotLength + 400000;
 const fileUrl = path => `/api/files/team-files/${path}`;
 async function sendFile(res, bucket, path, cache) {
   const file = await store.readFile(bucket, path); if (!file) return send(res, 404, { error: 'File not found.' });
@@ -91,7 +93,7 @@ const server = http.createServer(async (req, res) => {
     if (url.pathname.startsWith('/api/') && req.method === 'POST') {
       if (req.headers.origin && req.headers.origin !== `http://${req.headers.host}` && req.headers.origin !== process.env.PUBLIC_URL) return send(res, 403, { error: 'Origin not allowed.' });
       // Registration carries two player photos (each with a thumbnail) and a payment screenshot.
-      const input = await body(req, { '/api/register': 18000000, '/api/upi-qr': 7100000, '/api/settings': 300000 }[url.pathname] ?? 20000);
+      const input = await body(req, { '/api/register': registerLimit, '/api/upi-qr': 7100000, '/api/settings': 300000 }[url.pathname] ?? 20000);
       if (url.pathname === '/api/login') {
         const key = `login:${req.socket.remoteAddress}`;
         if (limited(key, 10, 60000)) return send(res, 429, { error: 'Too many attempts. Try again in a minute.' });
@@ -109,23 +111,31 @@ const server = http.createServer(async (req, res) => {
       if (url.pathname === '/api/logout') { const token = /carromia_session=([^;]+)/.exec(req.headers.cookie || '')?.[1]; sessions.delete(token); res.setHeader('Set-Cookie', 'carromia_session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0'); return send(res, 200, { ok: true }); }
       if (url.pathname === '/api/register') {
         if (limited(`register:${req.socket.remoteAddress}`, 30, 600000)) return send(res, 429, { error: 'Too many registrations from this connection. Try again in a few minutes.' });
-        const photos = playerPhotos(input), proof = paymentProof(input);
-        const team = await change(() => { fail(state.demo, 'Sample tournament is active. Start a fresh event from Settings to accept registrations.'); return addTeam(state, input); });
-        const files = teamFiles(`main/${randomUUID()}`);
-        await Promise.all(photos.flatMap((p, i) => [store.saveFile('team-files', files.photos[i], bytes(p.photo), 'image/jpeg'), store.saveFile('team-files', thumbPath(files.photos[i]), bytes(p.thumb), 'image/jpeg')]));
-        await store.savePhotos(team.id, files.photos);
-        if (proof && team.status === 'pending') { await store.saveFile('team-files', files.payment, bytes(proof), 'image/jpeg'); await store.savePaymentProof(team.id, files.payment); }
-        store.audit({ actor_name: 'Public registration', action: 'register', detail: { team: team.id, name: team.name } }); return send(res, 201, { team });
+        // One team, or several from one parish paid for together (input.teams). The screenshot is kept
+        // once, in the first team's folder, and every team in the group points at it.
+        const entries = Array.isArray(input.teams) ? input.teams : [input], photos = entries.map(t => playerPhotos(t)), proof = paymentProof(input);
+        const teams = await change(() => { fail(state.demo, 'Sample tournament is active. Start a fresh event from Settings to accept registrations.'); return addTeams(state, { ...input, teams: entries }); });
+        const folders = teams.map(() => teamFiles(`main/${randomUUID()}`));
+        await Promise.all(teams.flatMap((team, j) => photos[j].flatMap((p, i) => [store.saveFile('team-files', folders[j].photos[i], bytes(p.photo), 'image/jpeg'), store.saveFile('team-files', thumbPath(folders[j].photos[i]), bytes(p.thumb), 'image/jpeg')])));
+        for (const [j, team] of teams.entries()) await store.savePhotos(team.id, folders[j].photos);
+        if (proof && teams[0].status === 'pending') { await store.saveFile('team-files', folders[0].payment, bytes(proof), 'image/jpeg'); for (const team of teams) await store.savePaymentProof(team.id, folders[0].payment); }
+        for (const team of teams) store.audit({ actor_name: 'Public registration', action: 'register', detail: { team: team.id, name: team.name, ...(team.group ? { group: team.group.id } : {}) } });
+        return send(res, 201, { teams, team: teams[0] });
       }
-      // A team's registration form, for whoever knows its primary player's mobile number.
-      if (url.pathname === '/api/team-form') {
+      // A team's registration form, for whoever knows its primary player's or parish coordinator's
+      // mobile number, or every form in a group for the coordinator.
+      if (url.pathname === '/api/team-form' || url.pathname === '/api/group-form') {
         const id = String(input.id ?? '').trim().toUpperCase();
         if (limited(`form:${req.socket.remoteAddress}`, 10, 600000) || limited(`form:${id}`, 10, 600000)) return send(res, 429, { error: 'Too many tries. Try again in 10 minutes.' });
-        const { checkinToken, ...team } = teamForm(state, id, input.mobile);
-        const [qr, lunchQr] = await Promise.all([teamQr(checkinToken, '/checkin'), team.lunch ? teamQr(checkinToken, '/lunch') : '']);
-        // The thumbnails, inline, for the form's photo boxes.
-        const photos = await Promise.all(((await store.loadPhotos())[team.id] || []).map(async p => { const file = p && await store.readFile('team-files', thumbPath(p)); return file ? `data:image/jpeg;base64,${file.bytes.toString('base64')}` : ''; }));
-        return send(res, 200, { team, qr, lunchQr, photos });
+        const saved = await store.loadPhotos();
+        const formFor = async ({ checkinToken, ...team }) => {
+          const [qr, lunchQr] = await Promise.all([teamQr(checkinToken, '/checkin'), team.lunch ? teamQr(checkinToken, '/lunch') : '']);
+          // The thumbnails, inline, for the form's photo boxes.
+          const photos = await Promise.all((saved[team.id] || []).map(async p => { const file = p && await store.readFile('team-files', thumbPath(p)); return file ? `data:image/jpeg;base64,${file.bytes.toString('base64')}` : ''; }));
+          return { team, qr, lunchQr, photos };
+        };
+        if (url.pathname === '/api/team-form') return send(res, 200, await formFor(teamForm(state, id, input.mobile)));
+        return send(res, 200, { forms: await Promise.all(groupForm(state, id, input.mobile).map(formFor)) });
       }
       const user = official(req);
       if (!user) return send(res, 401, { error: 'Sign in to the tournament desk first.' });

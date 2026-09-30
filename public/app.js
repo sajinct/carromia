@@ -1,7 +1,7 @@
 import { pagesMode, remoteApi, watch } from './runtime.js';
 import { prizes, timeline, massTimes, venueAddress, about, documents, goodToKnow, ruleSections, matchFormat, formatText } from './info.js';
 import { groups, centres, centreTypes, idTypes } from './parishes.js';
-import { registrationPdf } from './registration-pdf.js';
+import { registrationPdf, groupRegistrationPdf } from './registration-pdf.js';
 const route = () => pagesMode ? (location.hash.slice(1) || '/').split('?')[0] : location.pathname;
 const $ = (s, root = document) => root.querySelector(s);
 const app = $('#app'), modal = $('#modal');
@@ -128,8 +128,9 @@ function home() {
 }
 function registration() {
   const closed = state.demo || !state.registration.open, e = state.event;
+  teamEntrySeq = 0;
   const bring = `<ol>${documents.map(line => `<li>${esc(line)}</li>`).join('')}</ol>`;
-  return `<div class="public-wrap">${publicHeader()}<main class="registration-layout"><section><div class="eyebrow">YOUR NEXT GREAT GAME STARTS HERE</div><h1>Find your partner.<br><em>Take your shot.</em></h1><p>Register your two-player team for CARROMIA ${esc(e.year)}.</p><ul class="registration-perks"><li>${icon('users')} Open doubles. Two players, both 18 or older.</li><li>${icon('coins')} Entry fee ${money(e.entryFee)} per team.</li><li>${icon('clock')} Matches are ${esc(formatText(e))}.</li><li>${icon('check')} Your own team ID and check-in QR.</li></ul><div class="subtle-card">${icon('pin')}<strong>${esc(e.venue)}</strong><p>${esc(dateLabel())} · reporting time 9:00 AM</p></div><div class="subtle-card bring-card">${icon('shield')}<strong>Bring on the day</strong>${bring}</div>${supportCard()}</section><section class="form-card"><div class="section-heading"><h2>Team registration</h2>${badge('2 players', 'green')}</div>${closed ? `<div class="empty"><h3>${state.demo ? 'Registration is currently closed' : esc(state.registration.reason)}</h3><p>${state.demo ? 'Registration will open soon. Please check back.' : 'Follow the boards and the bracket on the live display.'}</p><a href="/live" class="btn primary">View live boards ${icon('arrow')}</a></div>` : `<div class="notice register-facts"><span><strong>${money(e.entryFee)}</strong> per team</span><span><strong>${state.registration.slotsLeft}</strong> of ${e.maxTeams} slots open</span>${e.registrationDeadline ? `<span>Register by <strong>${esc(deadlineLabel({ day: 'numeric', month: 'short' }))}</strong></span>` : ''}</div><form id="registration-form"><label>Team name<input name="name" maxlength="80" placeholder="e.g. The Strikers" required></label><div class="form-row"><label>Forane / Zone<select name="forane" required><option value="">Select forane or zone</option>${groups.map(g => `<option>${esc(g)}</option>`).join('')}</select></label><label>Parish / Centre<select name="centre" required disabled><option value="">Choose the forane first</option></select></label></div><p class="form-note">Up to ${e.maxTeamsPerParish} teams can register from one parish.</p>${playerFields(1)}${playerFields(2)}${e.paymentRequired ? paymentFields() : ''}<div class="form-row"><label>Primary contact<select name="primaryContact"><option value="0">Player one</option><option value="1">Player two</option></select></label><label>Lunch on the day<select name="lunch"><option value="0">No lunch needed</option><option value="1">Lunch for 1 player</option><option value="2">Lunch for both players</option></select></label></div><label class="checkbox-label"><input name="adults" type="checkbox" required> Both players are 18 or older</label><p class="form-note">Player names appear on tournament screens. Mobile numbers, photos and ID details are visible only to the tournament desk, which uses them to check you in. Lunch is provided only if it is booked here.</p><details class="bring-list"><summary>What to bring on the day</summary>${bring}</details><p class="form-error" role="alert"></p><button class="btn primary full" type="submit">Register team ${icon('arrow')}</button></form>`}</section></main>${footer()}</div>`;
+  return `<div class="public-wrap">${publicHeader()}<main class="registration-layout"><section><div class="eyebrow">YOUR NEXT GREAT GAME STARTS HERE</div><h1>Find your partner.<br><em>Take your shot.</em></h1><p>Register your two-player team for CARROMIA ${esc(e.year)}.</p><ul class="registration-perks"><li>${icon('users')} Open doubles. Two players, both 18 or older.</li><li>${icon('plus')} Several teams from one parish? Register them together and pay once.</li><li>${icon('coins')} Entry fee ${money(e.entryFee)} per team.</li><li>${icon('clock')} Matches are ${esc(formatText(e))}.</li><li>${icon('check')} Your own team ID and check-in QR.</li></ul><div class="subtle-card">${icon('pin')}<strong>${esc(e.venue)}</strong><p>${esc(dateLabel())} · reporting time 9:00 AM</p></div><div class="subtle-card bring-card">${icon('shield')}<strong>Bring on the day</strong>${bring}</div>${supportCard()}</section><section class="form-card"><div class="section-heading"><h2>Team registration</h2>${badge('2 players', 'green')}</div>${closed ? `<div class="empty"><h3>${state.demo ? 'Registration is currently closed' : esc(state.registration.reason)}</h3><p>${state.demo ? 'Registration will open soon. Please check back.' : 'Follow the boards and the bracket on the live display.'}</p><a href="/live" class="btn primary">View live boards ${icon('arrow')}</a></div>` : `<div class="notice register-facts"><span><strong>${money(e.entryFee)}</strong> per team</span><span><strong>${state.registration.slotsLeft}</strong> of ${e.maxTeams} slots open</span>${e.registrationDeadline ? `<span>Register by <strong>${esc(deadlineLabel({ day: 'numeric', month: 'short' }))}</strong></span>` : ''}</div><form id="registration-form"><div class="form-row"><label>Forane / Zone<select name="forane" required><option value="">Select forane or zone</option>${groups.map(g => `<option>${esc(g)}</option>`).join('')}</select></label><label>Parish / Centre<select name="centre" required disabled><option value="">Choose the forane first</option></select></label></div><p class="form-note">Up to ${e.maxTeamsPerParish} teams can register from one parish. Registering several? Add them all here and pay once.</p><div class="reg-teams">${teamEntry(0)}</div><button type="button" class="btn outline full add-team" data-action="add-team-entry"${teamEntryLimit() > 1 ? '' : ' hidden'}>${icon('plus')} Add another team from this parish</button><p class="form-note team-limit-note" role="status" hidden></p>${coordinatorFields()}${e.paymentRequired ? paymentFields() : ''}<label class="checkbox-label"><input name="adults" type="checkbox" required> <span class="adults-label">Both players are 18 or older</span></label><p class="form-note">Player names appear on tournament screens. Mobile numbers, photos and ID details are visible only to the tournament desk, which uses them to check you in. Lunch is provided only if it is booked here.</p><details class="bring-list"><summary>What to bring on the day</summary>${bring}</details><p class="form-error" role="alert"></p><button class="btn primary full" type="submit"><span class="submit-label">Register team</span> ${icon('arrow')}</button></form>`}</section></main>${footer()}</div>`;
 }
 // Support contacts from Event settings, with call and WhatsApp links.
 const waNumber = phone => { const d = String(phone ?? '').replace(/\D/g, ''); return d.length === 10 ? `91${d}` : d.length === 11 && d.startsWith('0') ? `91${d.slice(1)}` : d; };
@@ -137,16 +138,22 @@ function supportCard() {
   const contacts = state.event.contacts || [];
   return contacts.length ? `<div class="support-card">${icon('users')}<strong>Questions? Contact us</strong><ul>${contacts.map(c => `<li><span>${esc(c.name)}</span><a href="tel:${esc(c.phone.replace(/[^\d+]/g, ''))}">${esc(c.phone)}</a><a href="https://wa.me/${waNumber(c.phone)}" target="_blank" rel="noopener">WhatsApp</a></li>`).join('')}</ul></div>` : '';
 }
+const upiLink = amount => { const e = state.event; return `upi://pay?pa=${encodeURIComponent(e.upiId)}&pn=${encodeURIComponent(`${e.name} ${e.year}`)}&am=${amount}&cu=INR&tn=${encodeURIComponent(`${e.name} entry fee`)}`; };
 function paymentFields() {
-  const e = state.event, upi = e.upiId ? `upi://pay?pa=${encodeURIComponent(e.upiId)}&pn=${encodeURIComponent(`${e.name} ${e.year}`)}&am=${e.entryFee}&cu=INR&tn=${encodeURIComponent(`${e.name} entry fee`)}` : '';
-  return `<fieldset class="payment-fields"><legend><span>₹</span> Payment</legend><p class="form-note">Pay the entry fee of <strong>${money(e.entryFee)}</strong> to this UPI QR code, then enter the transaction number (UTR) or add a screenshot of the payment. Your registration is confirmed once the tournament desk sees the payment in the bank.</p><img class="upi-qr" src="${e.upiQr}" alt="UPI QR code for the entry fee" width="220" height="220">${e.upiId ? `<div class="upi-id"><code>${esc(e.upiId)}</code><button type="button" class="btn tiny outline" data-action="copy-link" data-link="${esc(e.upiId)}" data-copied="UPI ID copied.">Copy UPI ID</button><a class="btn tiny primary" href="${esc(upi)}">Pay with a UPI app</a></div>` : ''}<div class="form-row"><label>UPI transaction number (UTR)<input name="txnRef" maxlength="30" autocomplete="off" autocapitalize="characters" placeholder="e.g. 412356789012"></label><label>Payment screenshot<input name="paymentShot" type="file" accept="image/*"></label></div><p class="form-note">Enter the transaction number, add a screenshot, or both.</p></fieldset>`;
+  const e = state.event, upi = e.upiId ? upiLink(e.entryFee) : '';
+  return `<fieldset class="payment-fields"><legend><span>₹</span> Payment</legend><p class="form-note">Pay the entry fee of <strong class="fee-total">${money(e.entryFee)}</strong> to this UPI QR code, then enter the transaction number (UTR) or add a screenshot of the payment. Your registration is confirmed once the tournament desk sees the payment in the bank.</p><img class="upi-qr" src="${e.upiQr}" alt="UPI QR code for the entry fee" width="220" height="220">${e.upiId ? `<div class="upi-id"><code>${esc(e.upiId)}</code><button type="button" class="btn tiny outline" data-action="copy-link" data-link="${esc(e.upiId)}" data-copied="UPI ID copied.">Copy UPI ID</button><a class="btn tiny primary upi-pay" href="${esc(upi)}">Pay with a UPI app</a></div>` : ''}<div class="form-row"><label>UPI transaction number (UTR)<input name="txnRef" maxlength="30" autocomplete="off" autocapitalize="characters" placeholder="e.g. 412356789012"></label><label>Payment screenshot<input name="paymentShot" type="file" accept="image/*"></label></div><p class="form-note">Enter the transaction number, add a screenshot, or both.</p></fieldset>`;
 }
 // The team's public download page, as sent on WhatsApp.
-function teamLink(id) {
-  const route = `/teams?team=${encodeURIComponent(id)}`;
+function teamLink(id, all = false) {
+  const route = `/teams?team=${encodeURIComponent(id)}${all ? '&all=1' : ''}`;
   return pagesMode ? `${location.origin}${location.pathname}${state.practice ? '?practice=1' : ''}#${route}` : `${location.origin}${route}`;
 }
 function whatsappLink(t) {
+  // A group's forms go to its parish coordinator, all in one link.
+  if (t.group?.coordinator) {
+    const text = `${state.event.name} ${state.event.year}: the registration of ${t.group.size} teams from ${t.parish} (group ${t.group.id}) is confirmed. Download all their registration forms here, using the parish coordinator's mobile number: ${teamLink(t.group.id, true)}`;
+    return `https://wa.me/${waNumber(t.group.coordinator.mobile)}?text=${encodeURIComponent(text)}`;
+  }
   const text = `${state.event.name} ${state.event.year}: your registration for ${t.name} (${t.id}) is confirmed. Download your registration form here, using the primary player's mobile number: ${teamLink(t.id)}`;
   return `https://wa.me/${waNumber(t.players[t.primaryContact]?.mobile)}?text=${encodeURIComponent(text)}`;
 }
@@ -196,16 +203,16 @@ function publicResultsPage() {
   const intro = !state.matches.length ? 'The draw hasn’t been made yet. Results appear here as soon as matches are played.' : `${played} of ${total} match${total === 1 ? '' : 'es'} played${stage ? ` · Now playing: ${esc(stage)}` : ' · Tournament complete'}. This page updates by itself.`;
   return `<div class="public-wrap">${publicHeader()}<main class="results-page"><div class="rules-head"><div class="eyebrow">RESULTS · CARROMIA ${esc(state.event.year)}</div><h1>Every match.<br><em>Every winner.</em></h1><p>${intro}</p></div>${champion ? `<section class="results-champion">${icon('trophy')}<div><span>CHAMPIONS</span><h2>${esc(champion.name)}</h2><p>${champion.players.map(p => esc(p.name)).join(' &amp; ')} · ${esc(champion.parish)}</p></div>${runnerUp ? `<div class="runner-up"><span>RUNNERS-UP</span><strong>${esc(name(runnerUp))}</strong></div>` : ''}</section>` : ''}${boardsNow()}${state.matches.length ? `<section class="results-list"><div class="section-heading"><h2>Results</h2><label class="search-field">${icon('search')}<input id="public-result-search" aria-label="Find your team" placeholder="Find your team" value="${esc(resultSearch)}"></label></div><div id="public-result-list">${publicResultList()}</div></section><section class="results-bracket"><div class="section-heading"><h2>The bracket</h2><span class="muted compact">Scroll sideways to follow each round</span></div>${bracketView()}</section>` : `<div class="empty"><a class="btn outline" href="/teams">See the registered teams ${icon('arrow')}</a></div>`}</main>${footer()}</div>`;
 }
-function teamDownloadDialog(id) {
+function teamDownloadDialog(id, all = false) {
   const t = team(id);
   if (!t) return dialog('<h2>Team not found</h2><p>Check the team ID in your link, or find your team in the list.</p>');
   if (t.status === 'pending') return dialog(`<div class="eyebrow">${t.id}</div><h2>Payment being verified</h2><p>${esc(t.name)}’s registration form can be downloaded once the tournament desk confirms the payment.</p>`);
-  dialog(`<div class="eyebrow">${t.id}</div><h2>${esc(t.name)}</h2><p>Enter the primary player’s mobile number, as given at registration, to download the registration form.</p><form id="team-form-form" data-id="${t.id}"><label>Mobile number<input name="mobile" type="tel" inputmode="tel" autocomplete="tel" required placeholder="Mobile number"></label><p class="form-error" role="alert"></p><button class="btn primary full" type="submit">${icon('download')} Download registration form</button></form>`);
+  dialog(`<div class="eyebrow">${t.id}${t.group ? ` · group ${t.group.id}` : ''}</div><h2>${esc(t.name)}</h2><p>Enter the primary player’s${t.group ? ' or the parish coordinator’s' : ''} mobile number, as given at registration, to download the registration form.</p><form id="team-form-form" data-id="${t.id}" data-group="${t.group?.id ?? ''}"><label>Mobile number<input name="mobile" type="tel" inputmode="tel" autocomplete="tel" required placeholder="Mobile number"></label>${t.group ? `<label class="checkbox-label"><input name="all" type="checkbox"${all ? ' checked' : ''}> All ${t.group.size} teams from ${esc(t.parish)} in one PDF (parish coordinator’s number)</label>` : ''}<p class="form-error" role="alert"></p><button class="btn primary full" type="submit">${icon('download')} Download registration form</button></form>`);
 }
 // A WhatsApp link (/teams?team=CAR-001) opens that team's download dialog once.
 function openTeamFromLink() {
-  const id = new URLSearchParams(pagesMode ? location.hash.split('?')[1] : location.search).get('team');
-  if (id && openedTeamLink !== id && !modal.open) { openedTeamLink = id; teamDownloadDialog(id.toUpperCase()); }
+  const params = new URLSearchParams(pagesMode ? location.hash.split('?')[1] : location.search), id = params.get('team');
+  if (id && openedTeamLink !== id && !modal.open) { openedTeamLink = id; teamDownloadDialog(id.toUpperCase(), params.get('all') === '1'); }
 }
 // The UPI QR code for Event settings: a PNG at its own size (at most 2000px), on white, so it stays
 // sharp. It is saved as a file and the settings keep its address.
@@ -219,8 +226,39 @@ async function upiQrData(file) {
   if (data.length > 7000000) throw new Error('That QR image is too large. Crop it to just the QR code and try again.');
   return data;
 }
-function playerFields(n) {
-  return `<fieldset><legend><span>0${n}</span> Player ${n === 1 ? 'one' : 'two'}</legend><div class="photo-field"><img class="photo-preview" id="photo-preview-${n}" alt="" width="64" height="64" hidden><label>Photo<input name="photo${n}" type="file" accept="image/*" required data-photo="${n}"></label></div><label>Full name<input name="player${n}" maxlength="80" ${n === 1 ? 'autocomplete="name" ' : ''}required placeholder="Player’s full name"></label><label>Mobile number<input name="mobile${n}" type="tel" pattern="[+0-9 \\(\\)\\-]{7,20}" maxlength="20" required placeholder="Mobile number"></label><div class="form-row"><label>ID proof<select name="idType${n}" required><option value="">Select ID proof</option>${idTypes.map(t => `<option>${t}</option>`).join('')}</select></label><label>Last 4 of the ID number<input name="idLast4${n}" minlength="4" maxlength="4" pattern="[A-Za-z0-9]{4}" autocapitalize="characters" autocomplete="off" required placeholder="e.g. 1234"></label></div></fieldset>`;
+function playerFields(k, n) {
+  return `<fieldset><legend><span>0${n}</span> Player ${n === 1 ? 'one' : 'two'}</legend><div class="photo-field"><img class="photo-preview" id="photo-preview-${k}-${n}" alt="" width="64" height="64" hidden><label>Photo<input name="t${k}-photo${n}" type="file" accept="image/*" required data-photo="${k}-${n}"></label></div><label>Full name<input name="t${k}-player${n}" maxlength="80" ${k === 0 && n === 1 ? 'autocomplete="name" ' : ''}required placeholder="Player’s full name"></label><label>Mobile number<input name="t${k}-mobile${n}" type="tel" pattern="[+0-9 \\(\\)\\-]{7,20}" maxlength="20" required placeholder="Mobile number"></label><div class="form-row"><label>ID proof<select name="t${k}-idType${n}" required><option value="">Select ID proof</option>${idTypes.map(t => `<option>${t}</option>`).join('')}</select></label><label>Last 4 of the ID number<input name="t${k}-idLast4${n}" minlength="4" maxlength="4" pattern="[A-Za-z0-9]{4}" autocapitalize="characters" autocomplete="off" required placeholder="e.g. 1234"></label></div></fieldset>`;
+}
+// Several teams from one parish can register together with one payment: a card per team, a parish
+// coordinator once there are two or more, and the fee for all of them.
+const maxGroupTeams = 8; // Mirrors lib/tournament.mjs.
+let teamEntrySeq = 0;
+function teamEntry(k) {
+  return `<section class="reg-team" data-team="${k}"><div class="reg-team-head" hidden><h3>Team <span class="reg-team-number">1</span></h3><button type="button" class="btn tiny outline" data-action="remove-team-entry">Remove</button></div><label>Team name<input name="t${k}-name" maxlength="80" placeholder="e.g. The Strikers" required></label>${playerFields(k, 1)}${playerFields(k, 2)}<div class="form-row"><label>Primary contact<select name="t${k}-primaryContact"><option value="0">Player one</option><option value="1">Player two</option></select></label><label>Lunch on the day<select name="t${k}-lunch"><option value="0">No lunch needed</option><option value="1">Lunch for 1 player</option><option value="2">Lunch for both players</option></select></label></div></section>`;
+}
+function coordinatorFields() {
+  return `<fieldset class="coordinator-fields" hidden disabled><legend><span>${icon('users')}</span> Parish coordinator</legend><p class="form-note">The person registering these teams. Their mobile number can download every team’s registration form, and the desk contacts them about the payment.</p><div class="form-row"><label>Full name<input name="coordinatorName" maxlength="80" required placeholder="Coordinator’s full name"></label><label>Mobile number<input name="coordinatorMobile" type="tel" pattern="[+0-9 \\(\\)\\-]{7,20}" maxlength="20" required placeholder="Mobile number"></label></div></fieldset>`;
+}
+// Mirrors parishKey() in lib/tournament.mjs.
+const parishKey = name => String(name ?? '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').replace(/\b(church|parish)\b/g, ' ').replace(/\s+/g, ' ').trim();
+const chosenParish = form => String(form?.elements.centre?.value || '').split('|').slice(1).join('|');
+// How many teams this form may register: the slots left, and the chosen parish's remaining quota.
+function teamEntryLimit(form) {
+  const parish = chosenParish(form), already = parish ? state.teams.filter(t => parishKey(t.parish) === parishKey(parish)).length : 0;
+  return Math.max(1, Math.min(maxGroupTeams, state.registration.slotsLeft, (state.event.maxTeamsPerParish ?? 4) - already));
+}
+function syncTeamEntries(form) {
+  const cards = [...form.querySelectorAll('.reg-team')], count = cards.length, many = count > 1, limit = teamEntryLimit(form), fee = state.event.entryFee;
+  cards.forEach((card, i) => { $('.reg-team-head', card).hidden = !many; $('.reg-team-number', card).textContent = i + 1; });
+  $('.reg-teams', form).classList.toggle('multi', many);
+  $('[data-action="add-team-entry"]', form).hidden = count >= limit;
+  const note = $('.team-limit-note', form), parish = chosenParish(form);
+  note.hidden = count <= limit; note.textContent = count > limit ? `${parish || 'One parish'} can register ${limit} more team${limit === 1 ? '' : 's'}. Remove ${count - limit === 1 ? 'a team' : `${count - limit} teams`} to continue.` : '';
+  const coordinator = $('.coordinator-fields', form); coordinator.hidden = coordinator.disabled = !many;
+  $('.adults-label', form).textContent = many ? 'All players are 18 or older' : 'Both players are 18 or older';
+  $('.submit-label', form).textContent = many ? `Register ${count} teams` : 'Register team';
+  const total = $('.fee-total', form); if (total) total.textContent = many ? `${money(fee * count)} (${count} teams × ${money(fee)})` : money(fee);
+  const pay = $('.upi-pay', form); if (pay) pay.href = upiLink(fee * count);
 }
 // The parishes and centres of one forane or zone, grouped by type. The value carries the type too,
 // because Honnamanakatte is listed as both a mass centre and a mission centre.
@@ -265,6 +303,10 @@ async function imageData(src) {
   if (!src || src.startsWith('data:')) return src || '';
   try { const blob = await (await fetch(src)).blob(); return await new Promise(resolve => { const reader = new FileReader(); reader.onload = () => resolve(reader.result); reader.onerror = () => resolve(''); reader.readAsDataURL(blob); }); }
   catch { return ''; }
+}
+async function saveGroupPdf(forms) {
+  const [jsPDF, logos, photos] = await Promise.all([loadJsPdf(), pdfLogos(), Promise.all(forms.map(form => Promise.all((form.photos || []).map(imageData))))]);
+  groupRegistrationPdf(jsPDF, { forms: forms.map((form, i) => ({ ...form, photos: photos[i] })), event: state.event, logos }).save(`${forms[0].team.group?.id ?? forms[0].team.id}-registration-forms.pdf`);
 }
 async function saveRegistrationPdf(team, qr, teamPhotos = [], lunchQr = '') {
   const [jsPDF, logos, photos] = await Promise.all([loadJsPdf(), pdfLogos(), Promise.all(teamPhotos.map(imageData))]);
@@ -377,13 +419,25 @@ function lunchCell(t) {
   const served = t.lunchServed || 0;
   return `${t.lunch} booked<small>${served} served</small>${t.status !== 'pending' && served < t.lunch ? `<button class="btn tiny outline" data-action="serve-lunch" data-id="${t.id}">Serve</button>` : ''}${served ? `<button class="link-button" data-action="serve-lunch" data-id="${t.id}" data-undo="true">Undo</button>` : ''}`;
 }
+// The teams still waiting on this team's payment: its whole group, or just the team.
+const pendingGroup = t => !t ? [] : t.group ? state.teams.filter(g => g.group?.id === t.group.id && g.status === 'pending') : [t];
 function checkinCell(t) {
   if (t.status !== 'pending') return `<button class="btn tiny ${t.checkedIn ? 'soft' : 'outline'}" data-action="checkin" data-id="${t.id}" data-checked="${!t.checkedIn}">${icon(t.checkedIn ? 'check' : 'plus')}${t.checkedIn ? 'Checked in' : 'Check in'}</button>`;
-  return `<button class="btn tiny primary" data-action="confirm-payment" data-id="${t.id}">${icon('check')}Confirm payment</button><small class="payment-ref">${t.payment?.txnRef ? `UTR ${esc(t.payment.txnRef)}` : 'No UTR given'}</small>${t.payment?.screenshot ? `<button class="link-button" data-action="payment-proof" data-id="${t.id}">View screenshot</button>` : ''}`;
+  return `<button class="btn tiny primary" data-action="confirm-payment" data-id="${t.id}">${icon('check')}Confirm payment${t.payment?.teams > 1 ? ` · ${t.payment.teams} teams` : ''}</button><small class="payment-ref">${t.payment?.teams > 1 ? `${money(t.payment.amount)} for group ${esc(t.group?.id)} · ` : ''}${t.payment?.txnRef ? `UTR ${esc(t.payment.txnRef)}` : 'No UTR given'}</small>${t.payment?.screenshot ? `<button class="link-button" data-action="payment-proof" data-id="${t.id}">View screenshot</button>` : ''}`;
 }
 function formCell(t) {
   if (t.status === 'pending') return '<small class="muted">After payment</small>';
   return `<span class="row-actions"><button class="btn tiny outline" data-action="team-form" data-id="${t.id}" aria-label="Download the registration form for ${esc(t.name)}">${icon('download')}PDF</button><a class="btn tiny outline" href="${esc(whatsappLink(t))}" target="_blank" rel="noopener" aria-label="Send ${esc(t.name)} its form link on WhatsApp">WhatsApp</a></span>`;
+}
+// A group registration's confirmation: every team's ID, and all their forms in one PDF, or a
+// note that the desk is checking the one payment.
+async function groupConfirmation(teams, thumbs) {
+  const [first] = teams, pending = first.status === 'pending', fee = state.event.entryFee;
+  const head = `<div class="confirmation"><span class="success-icon">${icon(pending ? 'clock' : 'check')}</span><div class="eyebrow">${pending ? 'REGISTRATION RECEIVED' : 'YOU’RE ON THE TEAM SHEET'}</div><h2>${pending ? 'Payment being verified.' : 'See you at the board.'}</h2><p>${teams.length} teams from ${esc(first.parish)} are registered${pending ? ' and waiting for the tournament desk to confirm the payment' : ''}.</p><strong class="confirmation-id">${first.group.id}</strong><p><small>Group reference · parish coordinator ${esc(first.group.coordinator?.name)}</small></p><ol class="group-teams">${teams.map(t => `<li><strong>${t.id}</strong><span>${esc(t.name)}<small>${t.players.map(p => esc(p.name)).join(' & ')}</small></span></li>`).join('')}</ol>`;
+  if (pending) return `${head}<div class="notice confirmation-notes"><strong>Keep your group reference: ${first.group.id}</strong><span>Once the payment of ${money(first.payment?.amount ?? fee * teams.length)} reaches the bank, the desk confirms ${teams.length === 2 ? 'both' : `all ${teams.length}`} teams together and sends the parish coordinator a link on WhatsApp to download every team’s registration form. The coordinator can also download them from the Teams page with their mobile number.</span>${first.payment?.txnRef ? `<span>Your UPI transaction number: ${esc(first.payment.txnRef)}</span>` : ''}</div>${supportCard()}<a class="btn outline" href="/teams">Registered teams ${icon('arrow')}</a></div>`;
+  const forms = await Promise.all(teams.map(async (t, i) => { let qr = ''; try { qr = (await api(`qr?token=${t.checkinToken}`)).qr; } catch {} return { team: t, qr, photos: thumbs[i], lunchQr: await lunchQrFor(t) }; }));
+  lastRegistration = { forms };
+  return `${head}<p class="form-note">Save your team IDs for check-in at the tournament desk. Reporting time is 9:00 AM.</p><button class="btn primary" type="button" data-action="group-registration-pdf">${icon('download')} Download all ${teams.length} forms (PDF)</button><div class="notice confirmation-notes"><strong>Entry fee ${money(fee)} per team · ${money(fee * teams.length)} in all</strong><span>Print each team’s registration form. Both players sign their team’s form, and your Parish Priest attests each one with the parish seal. The rules are included once, at the end.</span>${lunchOn() && teams.some(t => t.lunch) ? '<span>A team that booked lunch finds its lunch coupons at the bottom of its form. Tear them off and bring them to the lunch counter, where each is scanned.</span>' : ''}<span>Bring on the day:</span><ol>${documents.map(line => `<li>${esc(line)}</li>`).join('')}</ol></div><a class="btn outline" href="/live">View live boards ${icon('arrow')}</a></div>`;
 }
 // Shown instead of the form download while the desk checks the payment.
 function pendingConfirmation(t) {
@@ -391,8 +445,8 @@ function pendingConfirmation(t) {
 }
 function teamTable() {
   loadPhotos();
-  const teams = state.teams.filter(t => `${t.id} ${t.name} ${t.parish} ${t.forane || ''} ${t.players.map(p => p.name).join(' ')}`.toLowerCase().includes(teamSearch.toLowerCase()));
-  return teams.length ? `<div class="table-wrap"><table><thead><tr><th>Team</th><th>Players</th><th>Parish</th><th>Primary contact</th><th>Lunch</th><th>Check-in</th><th>Form</th>${canRemoveTeams() ? '<th></th>' : ''}</tr></thead><tbody>${teams.map(t => `<tr><td><strong>${esc(t.name)}</strong><small>${t.id}</small>${t.status === 'pending' ? badge('Awaiting payment', 'orange') : ''}</td><td>${t.players.map((p, i) => `<span class="player-cell">${playerPhoto(t, i)}<span>${esc(p.name)}${p.idType ? `<small>${idLabel(p)}</small>` : ''}</span></span>`).join('')}</td><td>${esc(t.parish)}${t.forane ? `<small>${esc(t.centreType)} · ${esc(t.forane)}</small>` : ''}</td><td>${esc(t.players[t.primaryContact]?.mobile)}</td><td>${lunchCell(t)}</td><td>${checkinCell(t)}</td><td>${formCell(t)}</td>${canRemoveTeams() ? `<td><button class="btn tiny danger" data-action="remove-team" data-id="${t.id}" aria-label="Remove ${esc(t.name)}">Remove</button></td>` : ''}</tr>`).join('')}</tbody></table></div>` : '<div class="empty"><h3>No teams found</h3><p>Register your first team or try another search.</p></div>';
+  const teams = state.teams.filter(t => `${t.id} ${t.name} ${t.parish} ${t.forane || ''} ${t.players.map(p => p.name).join(' ')} ${t.group ? `group ${t.group.id} ${t.group.coordinator?.name ?? ''}` : ''}`.toLowerCase().includes(teamSearch.toLowerCase()));
+  return teams.length ? `<div class="table-wrap"><table><thead><tr><th>Team</th><th>Players</th><th>Parish</th><th>Primary contact</th><th>Lunch</th><th>Check-in</th><th>Form</th>${canRemoveTeams() ? '<th></th>' : ''}</tr></thead><tbody>${teams.map(t => `<tr><td><strong>${esc(t.name)}</strong><small>${t.id}</small>${t.group ? `<small class="group-tag">Group ${esc(t.group.id)}${t.group.coordinator ? ` · ${esc(t.group.coordinator.name)} ${esc(t.group.coordinator.mobile)}` : ''}</small>` : ''}${t.status === 'pending' ? badge('Awaiting payment', 'orange') : ''}</td><td>${t.players.map((p, i) => `<span class="player-cell">${playerPhoto(t, i)}<span>${esc(p.name)}${p.idType ? `<small>${idLabel(p)}</small>` : ''}</span></span>`).join('')}</td><td>${esc(t.parish)}${t.forane ? `<small>${esc(t.centreType)} · ${esc(t.forane)}</small>` : ''}</td><td>${esc(t.players[t.primaryContact]?.mobile)}</td><td>${lunchCell(t)}</td><td>${checkinCell(t)}</td><td>${formCell(t)}</td>${canRemoveTeams() ? `<td><button class="btn tiny danger" data-action="remove-team" data-id="${t.id}" aria-label="Remove ${esc(t.name)}">Remove</button></td>` : ''}</tr>`).join('')}</tbody></table></div>` : '<div class="empty"><h3>No teams found</h3><p>Register your first team or try another search.</p></div>';
 }
 function bracketPage() {
   return `${pageHeading('THE ROAD TO THE TROPHY', 'Tournament bracket', 'Single elimination. One winner moves forward.', state.matches.length ? badge(`${state.teams.length} teams`, 'green') : '<button class="btn primary" data-action="draw">Create knockout draw ' + icon('bracket') + '</button>')}${state.matches.length ? bracketView() : '<section class="panel empty"><h3>Every great tournament starts with a draw.</h3><p>Add your teams, then create a randomized knockout bracket. Byes are handled automatically.</p></section>'}`;
@@ -480,13 +534,25 @@ document.addEventListener('click', async event => {
     if (action === 'backup') { const data = await api('backup'); download('carromia-backup.json', JSON.stringify(data, null, 2)); return toast('Backup downloaded. Contains team contact details.'); }
     if (action === 'export') { download('carromia-results.json', JSON.stringify(completed().map(m => ({ ...m, teamAName: name(m.teamA), teamBName: name(m.teamB), winnerName: name(m.winner) })), null, 2)); return; }
     if (action === 'install') { if (installPrompt) { await installPrompt.prompt(); installPrompt = null; } else toast('Use your browser’s menu → Install app or Add to Home Screen.'); return; }
+    if (action === 'add-team-entry') {
+      const form = b.form, list = $('.reg-teams', form);
+      if (list.children.length >= teamEntryLimit(form)) return;
+      list.insertAdjacentHTML('beforeend', teamEntry(++teamEntrySeq)); syncTeamEntries(form);
+      list.lastElementChild.scrollIntoView({ behavior: 'smooth', block: 'start' }); $(`[name="t${teamEntrySeq}-name"]`, form).focus({ preventScroll: true }); return;
+    }
+    if (action === 'remove-team-entry') { const form = b.form; b.closest('.reg-team').remove(); syncTeamEntries(form); return; }
     b.disabled = true;
     if (action === 'team-download') { b.disabled = false; return teamDownloadDialog(id); }
     if (action === 'remove-upi-qr') { b.disabled = false; $('#settings-form [name=upiQr]').value = ''; $('#upi-qr-preview').hidden = true; b.hidden = true; return; }
     if (action === 'photo-full') { const t = team(id), p = Number(b.dataset.player), { url } = await api(`photo-full?team=${encodeURIComponent(id)}&player=${p}`); b.disabled = false; return dialog(`<div class="eyebrow">${esc(id)} · ${esc(t?.name)}</div><h2>${esc(t?.players[p]?.name || 'Player photo')}</h2><img class="payment-proof" src="${url}" alt="Photo of ${esc(t?.players[p]?.name || 'the player')}">`); }
     if (action === 'payment-proof') { const proofs = await api('payment-proofs'); b.disabled = false; return dialog(proofs[id] ? `<div class="eyebrow">${esc(id)}</div><h2>Payment screenshot</h2><img class="payment-proof" src="${proofs[id]}" alt="Payment screenshot for ${esc(id)}">` : '<h2>No screenshot</h2><p>This team gave only a transaction number.</p>'); }
-    if (action === 'confirm-payment') { const t = team(id); b.disabled = false; return dialog(`<div class="eyebrow">${esc(id)} · ${money(t.payment?.amount ?? state.event.entryFee)}</div><h2>Confirm ${esc(t.name)}’s payment?</h2><p>Check that the payment has reached the bank${t.payment?.txnRef ? `: UTR <strong>${esc(t.payment.txnRef)}</strong>` : ''}. The team can then download its registration form and check in.</p><div class="dialog-actions"><button class="btn outline" data-action="close">Not yet</button><button class="btn primary" data-action="confirm-payment-yes" data-id="${esc(id)}">${icon('check')} Payment received</button></div>`); }
-    if (action === 'confirm-payment-yes') { await api('confirm-payment', { id }); modal.close(); toast('Payment confirmed. Send the team its form on WhatsApp.'); await sync(); return; }
+    if (action === 'confirm-payment') {
+      const t = team(id), group = pendingGroup(t); b.disabled = false;
+      if (group.length > 1) return dialog(`<div class="eyebrow">Group ${esc(t.group.id)} · ${money(t.payment?.amount ?? state.event.entryFee * group.length)}</div><h2>Confirm the payment for ${group.length} teams?</h2><p>One payment from ${esc(t.parish)} covers these teams${t.payment?.txnRef ? `: UTR <strong>${esc(t.payment.txnRef)}</strong>` : ''}. Check that it has reached the bank; ${group.length === 2 ? 'both' : `all ${group.length}`} are confirmed together and can then download their forms and check in.</p><ol class="group-teams">${group.map(g => `<li><strong>${g.id}</strong><span>${esc(g.name)}<small>${g.players.map(p => esc(p.name)).join(' & ')}</small></span></li>`).join('')}</ol><div class="dialog-actions"><button class="btn outline" data-action="close">Not yet</button><button class="btn primary" data-action="confirm-payment-yes" data-id="${esc(id)}">${icon('check')} Payment received</button></div>`);
+      return dialog(`<div class="eyebrow">${esc(id)} · ${money(t.payment?.amount ?? state.event.entryFee)}</div><h2>Confirm ${esc(t.name)}’s payment?</h2><p>Check that the payment has reached the bank${t.payment?.txnRef ? `: UTR <strong>${esc(t.payment.txnRef)}</strong>` : ''}. The team can then download its registration form and check in.</p><div class="dialog-actions"><button class="btn outline" data-action="close">Not yet</button><button class="btn primary" data-action="confirm-payment-yes" data-id="${esc(id)}">${icon('check')} Payment received</button></div>`);
+    }
+    if (action === 'confirm-payment-yes') { const count = pendingGroup(team(id)).length; await api('confirm-payment', { id }); modal.close(); toast(count > 1 ? `Payment confirmed for ${count} teams. Send the parish coordinator the forms on WhatsApp.` : 'Payment confirmed. Send the team its form on WhatsApp.'); await sync(); return; }
+    if (action === 'group-registration-pdf') { await saveGroupPdf(lastRegistration.forms); b.disabled = false; return; }
     if (action === 'registration-pdf') { const r = lastRegistration; await saveRegistrationPdf(r.team, r.qr, r.photos, r.lunchQr); b.disabled = false; return; }
     if (action === 'team-form') {
       const t = team(id), [qr, all, lunchQr] = await Promise.all([t.checkinToken ? api(`qr?token=${encodeURIComponent(t.checkinToken)}`).then(r => r.qr, () => '') : '', api('photos').catch(() => ({})), lunchQrFor(t)]);
@@ -533,6 +599,7 @@ document.addEventListener('input', event => { if (event.target.id === 'public-re
 document.addEventListener('change', async event => {
   const el = event.target;
   if (el.name === 'forane' && el.form?.id === 'registration-form') { const centre = el.form.elements.centre; centre.innerHTML = el.value ? centreOptions(el.value) : '<option value="">Choose the forane first</option>'; centre.disabled = !el.value; }
+  if (['forane', 'centre'].includes(el.name) && el.form?.id === 'registration-form') syncTeamEntries(el.form);
   if (el.name === 'upiQrFile') {
     try { const data = await upiQrData(el.files[0]); if (data) { const { url } = await api('upi-qr', { image: data }); $('#settings-form [name=upiQr]').value = url; const preview = $('#upi-qr-preview'); preview.src = data; preview.hidden = false; $('[data-action=remove-upi-qr]').hidden = false; toast('QR code uploaded. Save settings to use it.'); } }
     catch (error) { el.value = ''; toast(error.message, true); }
@@ -557,10 +624,19 @@ document.addEventListener('submit', async event => {
     if (form.getAttribute('id') === 'login-form') { await api('login', fields); await sync(); return; }
     if (form.getAttribute('id') === 'registration-form') {
       if (state.event.paymentRequired && !String(fields.txnRef || '').trim() && !fields.paymentShot?.size) throw new Error('Enter the UPI transaction number or add a payment screenshot.');
-      const [centreType, ...parish] = String(fields.centre || '').split('|'), [photos, thumbs] = await Promise.all([Promise.all([fullPhoto(fields.photo1), fullPhoto(fields.photo2)]), Promise.all([photoData(fields.photo1), photoData(fields.photo2)])]);
+      const [centreType, ...parish] = String(fields.centre || '').split('|');
+      // Each team card's fields are named t<card>-<field>.
+      const entries = await Promise.all([...form.querySelectorAll('.reg-team')].map(async card => {
+        const field = name => fields[`t${card.dataset.team}-${name}`], files = [field('photo1'), field('photo2')];
+        const [photos, thumbs] = await Promise.all([Promise.all(files.map(file => fullPhoto(file))), Promise.all(files.map(file => photoData(file)))]);
+        return { thumbs, team: { name: field('name'), primaryContact: field('primaryContact'), lunch: Number(field('lunch')) || 0, players: [1, 2].map(n => ({ name: field(`player${n}`), mobile: field(`mobile${n}`), idType: field(`idType${n}`), idLast4: field(`idLast4${n}`), photo: photos[n - 1], thumb: thumbs[n - 1] })) } };
+      }));
       const payment = state.event.paymentRequired ? { txnRef: fields.txnRef, screenshot: fields.paymentShot?.size ? await fullPhoto(fields.paymentShot) : '' } : undefined;
-      const player = n => ({ name: fields[`player${n}`], mobile: fields[`mobile${n}`], idType: fields[`idType${n}`], idLast4: fields[`idLast4${n}`], photo: photos[n - 1], thumb: thumbs[n - 1] });
-      const { team: t } = await api('register', { name: fields.name, forane: fields.forane, parish: parish.join('|'), centreType, primaryContact: fields.primaryContact, lunch: Number(fields.lunch) || 0, adults: fields.adults === 'on', players: [player(1), player(2)], payment });
+      const coordinator = entries.length > 1 ? { name: fields.coordinatorName, mobile: fields.coordinatorMobile } : undefined;
+      const reply = await api('register', { forane: fields.forane, parish: parish.join('|'), centreType, adults: fields.adults === 'on', teams: entries.map(e => e.team), coordinator, payment });
+      const registered = reply.teams || [reply.team];
+      if (registered.length > 1) { form.closest('.form-card').innerHTML = await groupConfirmation(registered, entries.map(e => e.thumbs)); return; }
+      const [t] = registered, { thumbs } = entries[0];
       if (t.status === 'pending') { form.closest('.form-card').innerHTML = pendingConfirmation(t); return; }
       let qr = ''; try { qr = (await api(`qr?token=${t.checkinToken}`)).qr; } catch {}
       lastRegistration = { team: t, qr, photos: thumbs, lunchQr: await lunchQrFor(t) };
@@ -573,6 +649,7 @@ document.addEventListener('submit', async event => {
       const contacts = [1, 2, 3].map(n => ({ name: fields[`contactName${n}`], phone: fields[`contactPhone${n}`] }));
       await api('settings', { name: fields.name, year: fields.year, venue: fields.venue, date: fields.date, startTime: fields.startTime, gamesPerMatch: fields.gamesPerMatch, gameMinutes: fields.gameMinutes, resetMinutes: fields.resetMinutes, restMinutes: fields.restMinutes, maxTeams: fields.maxTeams, maxTeamsPerParish: fields.maxTeamsPerParish, registrationDeadline: fields.registrationDeadline, entryFee: fields.entryFee, registrationOpen: fields.registrationOpen === 'on', paymentRequired: fields.paymentRequired === 'on', lunchCoupons: fields.lunchCoupons === 'on', upiQr: fields.upiQr, upiId: fields.upiId, contacts }); toast('Event settings saved.');
     }
+    if (form.getAttribute('id') === 'team-form-form' && fields.all === 'on') { const { forms } = await api('group-form', { id: form.dataset.group, mobile: fields.mobile }); await saveGroupPdf(forms); modal.close(); toast(`${forms.length} registration forms downloaded.`); return; }
     if (form.getAttribute('id') === 'team-form-form') { const r = await api('team-form', { id: form.dataset.id, mobile: fields.mobile }); await saveRegistrationPdf(r.team, r.qr, r.photos, r.lunchQr); modal.close(); toast('Registration form downloaded.'); return; }
     if (form.getAttribute('id') === 'reset-form') { await api('reset', fields); page = '/admin'; history.pushState({}, '', pagesMode ? `#${page}` : page); }
     modal.close(); await sync();

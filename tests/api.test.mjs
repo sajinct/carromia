@@ -98,6 +98,38 @@ test('payment at registration: pending until an official confirms it; the form n
   for (let i = 0; i < 7; i++) await form('CAR-001', '9000000000');
   assert.equal((await form('CAR-001', '9111111111')).status, 429, 'wrong numbers are rate limited');
 });
+test('a parish registers several teams with one payment; one confirmation and one download cover them all', async t => {
+  const { base, data, post, login } = await serve(t, 3103); const cookie = await login(), qr = photo.replace('jpeg', 'png');
+  assert.equal((await post('settings', { gamesPerMatch: 3, gameMinutes: 10, resetMinutes: 5, restMinutes: 0, registrationOpen: true, registrationDeadline: '', paymentRequired: true, upiQr: qr }, cookie)).status, 200);
+  const where = centre(2), team = (name, mobile) => ({ name, players: [player(`${name} A`, mobile), player(`${name} B`, '9222222222')] });
+  const group = extra => ({ ...where, adults: true, coordinator: { name: 'Fr. Coord', mobile: '9900000000' }, payment: { txnRef: '412356789012', screenshot: photo }, teams: [team('Alpha', '9111111111'), team('Beta', '9333333333'), team('Gamma', '9444444444')], ...extra });
+  assert.match((await (await post('register', group({ coordinator: undefined }))).json()).error, /parish coordinator/);
+  assert.match((await (await post('register', group({ teams: [team('Alpha', '9111111111'), { name: 'Beta', players: [player('B1', '9333333333'), player('B2', '9222222222', false)] }] }))).json()).error, /photo of each player/);
+  const reg = await post('register', group());
+  assert.equal(reg.status, 201); const { teams, team: first } = await reg.json();
+  assert.deepEqual(teams.map(t => [t.id, t.status, t.payment.amount, t.group.id]), [['CAR-001', 'pending', 1500, 'CAR-001'], ['CAR-002', 'pending', 1500, 'CAR-001'], ['CAR-003', 'pending', 1500, 'CAR-001']]);
+  assert.equal(first.id, 'CAR-001');
+  // Each team has its own photos; the one screenshot is shared.
+  const folder = id => JSON.parse(readFileSync(join(data, 'photos', `${id}.json`), 'utf8'))[0].split('/').slice(0, 2).join('/');
+  assert.equal(new Set(['CAR-001', 'CAR-002', 'CAR-003'].map(folder)).size, 3);
+  const proofs = await (await fetch(`${base}/api/payment-proofs`, { headers: { Cookie: cookie } })).json();
+  assert.equal(new Set(Object.values(proofs)).size, 1); assert.deepEqual(Object.keys(proofs).sort(), ['CAR-001', 'CAR-002', 'CAR-003']);
+  const shown = await (await fetch(`${base}/api/state`)).json();
+  assert.deepEqual(shown.teams[1].group, { id: 'CAR-001', size: 3 }); assert.ok(!JSON.stringify(shown).includes('9900000000'), 'the coordinator’s number is not public');
+  // One confirmation, then the coordinator downloads every form at once.
+  assert.match((await (await post('group-form', { id: 'CAR-001', mobile: '9900000000' })).json()).error, /still being verified/);
+  assert.equal((await post('confirm-payment', { id: 'CAR-003' }, cookie)).status, 200);
+  const desk = await (await fetch(`${base}/api/state`, { headers: { Cookie: cookie } })).json();
+  assert.deepEqual(desk.teams.map(t => t.status), ['confirmed', 'confirmed', 'confirmed']);
+  assert.match((await (await post('group-form', { id: 'CAR-001', mobile: '9111111111' })).json()).error, /parish coordinator/);
+  const { forms } = await (await post('group-form', { id: 'car-001', mobile: '+91 99000 00000' })).json();
+  assert.deepEqual(forms.map(f => f.team.id), ['CAR-001', 'CAR-002', 'CAR-003']);
+  assert.ok(forms.every(f => /^data:image\/png;base64,/.test(f.qr) && f.photos.length === 2 && f.team.checkinToken === undefined));
+  assert.notEqual(forms[0].qr, forms[1].qr, 'each team has its own check-in QR');
+  assert.equal((await (await post('team-form', { id: 'CAR-002', mobile: '9900000000' })).json()).team.id, 'CAR-002', 'the coordinator can download one team’s form too');
+  // The parish's quota counts the whole group.
+  assert.match((await (await post('register', group({ teams: [team('Delta', '9555555555'), team('Epsilon', '9666666666')] }))).json()).error, /can register 1 more team/);
+});
 test('removing a team or starting a fresh event deletes player photos', async t => {
   const { base, data, post, login } = await serve(t, 3101); const cookie = await login();
   for (const i of [1, 2]) assert.equal((await post('register', entry(i))).status, 201);

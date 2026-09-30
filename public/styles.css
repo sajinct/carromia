@@ -335,3 +335,15 @@ a.live-qr:hover,a.live-qr:focus-visible{border-color:var(--green);box-shadow:0 4
 .live-qr .qr-tap{display:none}
 @media(min-width:1600px){.live-qr img{width:168px;height:168px}.live-qr strong{font-size:26px}}
 @media(max-width:600px){.live-qr{padding:12px 16px}.live-qr img,.live-qr span,.live-qr small,.live-qr code,.live-qr .qr-scan{display:none}.live-qr .qr-tap{display:block}.live-qr strong{font-size:18px}.results-page{padding:24px 0 40px}.results-page .search-field{max-width:none}.results-champion{padding:22px 20px}.results-champion h2{font-size:23px}.results-champion .runner-up{padding-left:0;border-left:0}.result-cards{grid-template-columns:1fr}}
+/* Several teams from one parish in one registration. */
+.reg-teams.multi .reg-team{border:1px solid var(--line);border-radius:12px;padding:14px 16px 4px;margin-bottom:14px;background:#fbfcf8}
+.reg-team-head{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:10px}
+.reg-team-head h3{margin:0;font-size:15px;color:var(--green)}
+.add-team{margin:4px 0 12px}
+.team-limit-note{color:var(--orange)}
+legend span .icon{width:12px;height:12px;vertical-align:-2px}
+.group-teams{list-style:none;margin:16px auto;padding:0;max-width:420px;text-align:left}
+.group-teams li{display:flex;gap:14px;align-items:baseline;padding:9px 0;border-bottom:1px solid var(--line)}
+.group-teams li>strong{flex-shrink:0;color:var(--green);letter-spacing:1px;font-size:13px}
+.group-teams span small{display:block;color:var(--muted);font-size:12px;margin-top:2px}
+td small.group-tag{color:var(--green-2);font-weight:600}
