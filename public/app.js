@@ -282,7 +282,7 @@ function boardCard(b, publicMode = false) {
     : round ? `<span data-round="ROUND ${n} OF ${rounds}">ROUND ${n} OF ${rounds} · ${timeUp ? 'TIME UP · UMPIRE DECIDING' : 'TIME REMAINING'}</span><strong data-timer="${round.endsAt}">${String(minutes).padStart(2, '0')}:00</strong>`
     : `<span>ROUND ${n} OF ${rounds} · STARTING SOON</span><strong>${m.gamesA ?? 0} – ${m.gamesB ?? 0}</strong>`;
   const decided = n - 1, undo = playing && decided > 0 ? `<button class="icon-btn" data-action="undo-round" data-id="${m.id}" aria-label="Take back round ${decided}’s winner" title="Take back round ${decided}’s winner">↩</button>` : '';
-  const actions = !playing ? `<button class="btn primary full small" data-action="start" data-id="${m.id}">${icon('play')} Start match</button><button class="icon-btn" data-action="unassign" data-id="${m.id}" aria-label="Return ${m.id} to queue" title="Return to queue">↩</button>`
+  const actions = !m ? '' : !playing ? `<button class="btn primary full small" data-action="start" data-id="${m.id}">${icon('play')} Start match</button><button class="icon-btn" data-action="unassign" data-id="${m.id}" aria-label="Return ${m.id} to queue" title="Return to queue">↩</button>`
     : round ? `<small>Round ${n} won by</small>${[m.teamA, m.teamB].map(id => `<button class="btn outline small" data-action="round-winner" data-id="${m.id}" data-winner="${id}">${icon('trophy')} ${esc(name(id))}</button>`).join('')}${undo}`
     : `<button class="btn primary full small" data-action="next-round" data-id="${m.id}">${icon('play')} Start round ${n}</button>${undo}`;
   const foot = !playing ? 'Teams, please report to this board' : round ? `First to ${toWin(m)} round${toWin(m) === 1 ? '' : 's'} wins` : 'Players change seats for the next round';
