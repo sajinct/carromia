@@ -89,3 +89,13 @@
   .desk-header .connection-label{clip:rect(0,0,0,0)}
   .desk-header .avatar{width:44px;height:44px;padding:0;font-size:12px;color:#365a4b}
 }
+
+/* Keep mobile fieldset titles inside their cards, with the same badges as the steps. */
+@media(max-width:680px){
+  #registration-form fieldset{min-width:0;padding-top:16px}
+  #registration-form fieldset>legend{float:left;display:flex;align-items:center;gap:10px;width:100%;max-width:100%;margin:0 0 16px;padding:0;color:var(--green);font-size:16px;font-weight:650;line-height:1.5}
+  #registration-form fieldset>legend>span{display:grid;place-items:center;flex:0 0 30px;width:30px;height:30px;margin:0;border-radius:50%;background:#efe8d8;color:#82652a;font-size:12px;font-weight:700;line-height:1}
+  #registration-form fieldset>legend .icon{width:16px;height:16px;vertical-align:middle}
+  #registration-form fieldset>legend + *{clear:both}
+  #registration-form fieldset>legend + .form-note{margin-top:0}
+}
