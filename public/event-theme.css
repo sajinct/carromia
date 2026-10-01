@@ -95,3 +95,23 @@ label{font-size:13px;line-height:1.5}input,select,textarea{font-size:14px;min-he
 @media(max-width:580px){.sidebar{background:#123b3d}.sidebar nav>a{color:#c2d4c9}.sidebar nav>a.active{background:#f2cb60;color:#15383a}.sidebar .menu-toggle{color:#fff1cc;background:#23494b}.desk-header{background:#fffdf8}.desk .mobile-menu{background:var(--paper);color:var(--green)}.desk .mobile-menu a{font-size:13px;min-height:44px}.desk .mobile-menu button{min-height:44px}.desk .btn.tiny{min-height:38px}.desk .board-actions .btn{min-height:44px}.desk .stats strong{font-size:32px}}
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
 @media(max-width:580px){.sidebar nav{background:#123b3d;border-top-color:#456463;box-shadow:0 -5px 18px #123b3d20}.desk .board-team strong{font-size:12px}.desk .board-team small,.desk .match-meta{font-size:10px}.desk .stat-bottom{font-size:10px}.desk .board-actions .btn{font-size:11px}}
+
+/* Desktop sidebar: separate the brand, navigation and event details. */
+@media(min-width:851px){
+  .sidebar{width:248px;overflow-y:auto;overscroll-behavior:contain}
+  .desk-main{margin-left:248px;width:calc(100% - 248px)}
+  .sidebar>.brand{min-height:44px;padding:0 10px;margin-bottom:24px;flex-shrink:0}
+  .sidebar>nav{gap:6px;flex-shrink:0}
+  .sidebar nav>a{display:grid;grid-template-columns:20px minmax(0,1fr) auto;gap:10px;min-height:46px;padding:12px 10px;font-size:14px;line-height:1.45}
+  .sidebar nav>a>span{min-width:0;overflow-wrap:anywhere}
+  .sidebar nav .icon{width:20px;height:20px}
+  .sidebar nav small{margin:0;padding:3px 6px;font-size:11px;line-height:1.4;justify-self:end}
+  .sidebar-bottom{flex-shrink:0;padding-top:24px}
+  .side-live{gap:12px;min-height:44px;padding:12px 10px 18px;font-size:13px;line-height:1.5}
+  .event-mini{display:grid;grid-template-columns:36px minmax(0,1fr);align-items:center;gap:12px;padding:20px 10px 16px;font-size:13px}
+  .event-mini-icon{width:36px;height:36px}
+  .event-mini>div{min-width:0;line-height:1.5;overflow-wrap:anywhere}
+  .event-mini .tiny-tag{display:block;margin-top:4px;font-size:10px;line-height:1.5;letter-spacing:.8px}
+  .sidebar-bottom .logout{gap:12px;min-height:44px;width:100%;padding:12px 10px;text-align:left;font-size:13px;line-height:1.5}
+  .sidebar-bottom .logout .icon{width:18px;height:18px}
+}
