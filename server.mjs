@@ -89,6 +89,11 @@ const server = http.createServer(async (req, res) => {
       const t = state.teams.find(t => t.checkinToken === url.searchParams.get('token')); if (!t) return send(res, 404, { error: 'Team not found.' });
       return send(res, 200, { qr: await teamQr(t.checkinToken, url.searchParams.get('for') === 'lunch' ? '/lunch' : '/checkin') });
     }
+    if (url.pathname === '/api/upi-payment-qr' && req.method === 'GET') {
+      const uri = url.searchParams.get('uri') || '';
+      if (uri.length > 1024 || !/^upi:\/\/pay\?pa=[\w.@-]+&pn=[A-Za-z0-9]*&am=\d+\.\d{2}&cu=INR$/.test(uri)) return send(res, 400, { error: 'Invalid UPI payment link.' });
+      return send(res, 200, { qr: await QRCode.toDataURL(uri, { width: 440, margin: 4, color: { dark: '#000000', light: '#ffffff' } }) });
+    }
     if (url.pathname === '/api/link-qr' && req.method === 'GET') {
       const route = url.searchParams.get('route'); if (!shareRoutes.includes(route)) return send(res, 404, { error: 'Page not found.' });
       const link = `${process.env.PUBLIC_URL || `http://localhost:${port}`}${route}`;

@@ -49,16 +49,20 @@ test('registration records the parish or centre from the register and each playe
   assert.ok(!JSON.stringify(s).includes('base64'));
   assert.ok(seedDemo().teams.every(t => findCentre(t.forane, t.parish, t.centreType) && t.players.every(p => p.idType && p.idLast4.length === 4)), 'sample teams use the register too');
 });
-test('event settings: payment at registration needs a UPI QR code; support contacts', () => {
+test('event settings: payment at registration needs a UPI ID or fallback QR code; support contacts', () => {
   const s = open(), base = { name: 'Cup', venue: 'Hall', resetMinutes: 5, restMinutes: 0 }, qr = photo.replace('jpeg', 'png');
-  assert.throws(() => updateSettings(open(), { ...base, paymentRequired: true }), /Upload the UPI QR code/);
+  assert.throws(() => updateSettings(open(), { ...base, paymentRequired: true }), /UPI ID or upload the UPI QR code/);
   assert.throws(() => updateSettings(open(), { ...base, upiQr: 'data:image/gif;base64,AAAA' }), /PNG or JPEG/);
   assert.throws(() => updateSettings(open(), { ...base, upiId: 'not an id' }), /valid UPI ID/);
   assert.throws(() => updateSettings(open(), { ...base, contacts: [{ name: 'Fr. Joseph', phone: '12' }] }), /valid phone number/);
   assert.throws(() => updateSettings(open(), { ...base, contacts: [1, 2, 3, 4].map(i => ({ name: 'N' + i, phone: '9876543210' })) }), /up to 3/);
   updateSettings(s, { ...base, paymentRequired: true, upiQr: qr, upiId: 'carromia@okaxis', contacts: [{ name: ' Fr. Joseph ', phone: '9876543210' }, { name: '', phone: '' }] });
   assert.deepEqual([s.event.paymentRequired, s.event.upiQr, s.event.upiId, s.event.contacts], [true, qr, 'carromia@okaxis', [{ name: 'Fr. Joseph', phone: '9876543210' }]]);
-  assert.throws(() => updateSettings(s, { ...base, upiQr: '' }), /Upload the UPI QR code/, 'the QR can’t be removed while payment is on');
+  updateSettings(s, { ...base, upiQr: '' });
+  assert.equal(s.event.upiQr, '', 'the uploaded QR is optional when a UPI ID generates it');
+  assert.throws(() => updateSettings(s, { ...base, upiId: '' }), /UPI ID or upload the UPI QR code/, 'payment still needs a destination');
+  const dynamic = open(); updateSettings(dynamic, { ...base, paymentRequired: true, upiId: 'carromia@okaxis' });
+  assert.equal(dynamic.event.paymentRequired, true, 'UPI ID alone enables payment');
   updateSettings(s, { ...base, paymentRequired: false, upiQr: '' }); assert.equal(s.event.paymentRequired, false);
   // The QR code is normally an uploaded file: its Storage address, or the Node server's.
   const file = 'main/upi-qr-0b6f7c1e-2a4d-4e8f-9c3b-5d6e7f8a9b0c.png';

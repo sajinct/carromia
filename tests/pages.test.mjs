@@ -1,4 +1,5 @@
 import test from 'node:test';
+import QRCode from 'qrcode';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { readFileSync, existsSync, readdirSync } from 'node:fs';
@@ -10,7 +11,7 @@ const root = join(import.meta.dirname, '..');
 const functionSource = readFileSync(join(root, 'supabase', 'functions', 'registration', 'index.ts'), 'utf8');
 const { handle: registrationFunction } = await import(`data:text/javascript,${encodeURIComponent(functionSource)}`);
 const SUPABASE = 'https://vzxcqpgwvknonkhjinuk.supabase.co', PUBLISHABLE = 'sb_publishable_HdgK5UXMha3bvF5mk7o1Yw_eMN6h_Ro', SERVICE = 'sb_secret_test';
-test('Pages build is portable to a repository subpath and contains only static assets', () => {
+test('Pages build is portable to a repository subpath and contains only static assets', async () => {
   execFileSync(process.execPath, ['scripts/build-pages.mjs'], { cwd: root });
   const html = readFileSync(join(root, 'dist/index.html'), 'utf8');
   assert.ok(html.includes('src="./app.js"')); assert.ok(!/(href|src)="\//.test(html));
@@ -19,6 +20,12 @@ test('Pages build is portable to a repository subpath and contains only static a
   for (const icon of manifest.icons) assert.ok(existsSync(join(root, 'dist', icon.src)));
   assert.ok(!readFileSync(join(root, 'dist/tournament-browser.js'), 'utf8').includes('node:crypto'));
   assert.ok(!readdirSync(join(root, 'dist')).includes('data'));
+  const { default: browserQr } = await import('../dist/vendor/qrcode.js');
+  for (const amount of ['300.00', '900.00', '1250.50']) {
+    const uri = `upi://pay?pa=parish@okaxis&pn=CARROMIA2026&am=${amount}&cu=INR`;
+    assert.deepEqual(browserQr.create(uri).modules.data, QRCode.create(uri).modules.data, 'the packaged browser encoder preserves the exact payment payload');
+  }
+  assert.ok(!readFileSync(join(root, 'dist/runtime.js'), 'utf8').includes('cdn.jsdelivr.net/npm/qrcode'), 'QR generation uses the local asset');
 });
 // An in-memory stand-in for the Supabase endpoints the live site calls, including the database rules.
 function fakeSupabase() {

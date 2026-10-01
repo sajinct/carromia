@@ -97,9 +97,9 @@ async function change(user, action, input, apply) {
   }
 }
 
-async function qrCode(url, width = 240) {
-  const { default: QRCode } = await import('https://cdn.jsdelivr.net/npm/qrcode@1.5.4/+esm');
-  return { qr: await QRCode.toDataURL(url, { width, margin: 2, color: { dark: '#172d2c', light: '#ffffff' } }) };
+async function qrCode(url, width = 240, payment = false) {
+  const { default: QRCode } = await import('./vendor/qrcode.js');
+  return { qr: await QRCode.toDataURL(url, { width, margin: payment ? 4 : 2, color: { dark: payment ? '#000000' : '#172d2c', light: '#ffffff' } }) };
 }
 // A team's check-in or lunch-counter page, from its QR code.
 function teamLink(token, route) { const link = `${route}?token=${encodeURIComponent(token)}`; return practiceOn() ? practiceLink(link) : `${siteUrl()}#${link}`; }
@@ -164,6 +164,7 @@ async function manageOfficials(user, action, input) {
 }
 
 export async function remoteApi(path, input = {}) {
+  if (path.startsWith('upi-payment-qr?')) return qrCode(new URLSearchParams(path.slice(path.indexOf('?') + 1)).get('uri'), 440, true);
   // Check-in and lunch-coupon QR codes keep the device in the same event (a practice QR opens practice mode).
   if (path.startsWith('qr?')) { const query = new URLSearchParams(path.slice(3)); return qrCode(teamLink(query.get('token'), query.get('for') === 'lunch' ? '/lunch' : '/checkin')); }
   if (path.startsWith('practice-qr?')) return qrCode(practiceLink(new URLSearchParams(path.slice(12)).get('route')));
