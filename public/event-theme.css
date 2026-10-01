@@ -1,6 +1,44 @@
 /* CARROMIA's event identity: deep teal, tournament gold and warm board ivory. */
 :root{--bg:#f8f5ee;--paper:#fffdf8;--green:#123b3d;--green-2:#235b5a;--lime:#f4cf66;--ink:#203337;--muted:#66716e;--line:#e1ddd2;--soft:#eef1e8;--orange:#986329;--radius:14px;--gold:#f5ca55;--queen:#b84435}
 body{background:var(--bg)}
+/* Rounded, visible scroll handles for pages, brackets, tables and dialogs. */
+:root{
+  --scrollbar-track:#eee8dc;
+  --scrollbar-thumb:#59776d;
+  --scrollbar-hover:#123b3d;
+}
+*{
+  scrollbar-width:thin;
+  scrollbar-color:var(--scrollbar-thumb) var(--scrollbar-track);
+}
+.sidebar{
+  --scrollbar-track:#123b3d;
+  --scrollbar-thumb:#92aaa0;
+  --scrollbar-hover:#f5ca55;
+}
+/* Chromium and Safari use the shaped handles; Firefox uses the rules above. */
+@supports selector(::-webkit-scrollbar){
+  *{scrollbar-width:auto;scrollbar-color:auto}
+  *::-webkit-scrollbar{width:12px;height:12px}
+  *::-webkit-scrollbar-track{background:var(--scrollbar-track);border-radius:20px}
+  *::-webkit-scrollbar-thumb{
+    background:var(--scrollbar-thumb);
+    border:3px solid var(--scrollbar-track);
+    border-radius:20px;
+    min-height:44px;
+    min-width:44px;
+  }
+  *::-webkit-scrollbar-thumb:hover{background:var(--scrollbar-hover)}
+  *::-webkit-scrollbar-thumb:active{background:var(--scrollbar-hover)}
+  *::-webkit-scrollbar-corner{background:var(--scrollbar-track)}
+}
+@media(forced-colors:active){
+  *{scrollbar-width:auto;scrollbar-color:auto}
+  *::-webkit-scrollbar{width:auto;height:auto}
+  *::-webkit-scrollbar-track,*::-webkit-scrollbar-corner{background:Canvas}
+  *::-webkit-scrollbar-thumb{background:CanvasText;border-color:Canvas}
+  *::-webkit-scrollbar-thumb:hover,*::-webkit-scrollbar-thumb:active{background:Highlight}
+}
 .btn{min-height:44px;border-radius:8px;font-size:13px;transition:background .18s,transform .18s,box-shadow .18s}
 .btn.primary:hover{background:#215557;box-shadow:0 4px 14px #123b3d20}
 .btn.outline{border-color:#c9d0c8}
