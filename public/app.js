@@ -2,7 +2,7 @@ import { pagesMode, remoteApi, watch } from './runtime.js';
 import { prizes, timeline, massTimes, venueAddress, about, documents, goodToKnow, ruleSections, matchFormat, formatText } from './info.js';
 import { groups, centres, centreTypes, idTypes } from './parishes.js';
 import { registrationPdf, groupRegistrationPdf } from './registration-pdf.js';
-import { analyticsEnabled, analyticsPreferenceLabel, beforeAnalyticsNavigation, updateAnalytics, trackAnalyticsEvent } from './analytics.js';
+import { analyticsEnabled, analyticsPreferenceLabel, toggleAnalytics, beforeAnalyticsNavigation, updateAnalytics, trackAnalyticsEvent } from './analytics.js';
 const route = () => pagesMode ? (location.hash.slice(1) || '/').split('?')[0] : location.pathname;
 const $ = (s, root = document) => root.querySelector(s);
 const app = $('#app'), modal = $('#modal');
@@ -150,7 +150,7 @@ function publicMenu() {
   const links = [...publicNavLinks(), ['/admin', 'shield', 'Tournament desk']];
   return `<button class="menu-toggle" data-action="menu" aria-label="Menu" aria-controls="mobile-menu" aria-expanded="${menuOpen}">${icon('menu')}</button><div class="mobile-menu ${menuOpen ? 'open' : ''}" id="mobile-menu">${links.map(([p, i, text]) => `<a href="${p}" class="${page === p ? 'active' : ''}" ${page === p ? 'aria-current="page"' : ''}>${icon(i)} ${text}</a>`).join('')}</div>`;
 }
-function footer() { return `<footer><span>© ${esc(state.event.year)} CARROMIA · Hosted by Mary Matha Church, Vijayanagar · Diocese of Mandya</span><nav class="footer-links" aria-label="Footer navigation"><a href="/live">${icon('screen')} Live boards</a><a class="footer-desk" href="/admin">${icon('shield')} Tournament desk</a>${analyticsEnabled() ? `<details class="analytics-disclosure"><summary>Visitor analytics</summary><p>Google Analytics and Microsoft Clarity measure visits and interactions without analytics cookies. Player details are masked in replays.</p><button type="button" class="analytics-preferences" data-analytics-settings>${analyticsPreferenceLabel()}</button></details>` : ''}</nav><span class="footer-hosts">${hosts.map(h => `<a href="${h.href}" target="_blank" rel="noopener" title="${esc(h.name)}"><img src="${h.img}" alt="${esc(h.alt)}" width="26" height="26"></a>`).join('')}</span></footer>`; }
+function footer() { return `<footer><span>© ${esc(state.event.year)} CARROMIA · Hosted by Mary Matha Church, Vijayanagar · Diocese of Mandya</span><nav class="footer-links" aria-label="Footer navigation"><a href="/live">${icon('screen')} Live boards</a><a class="footer-desk" href="/admin">${icon('shield')} Tournament desk</a>${analyticsEnabled() ? `<button type="button" class="analytics-preferences" data-action="analytics-settings" aria-haspopup="dialog" aria-controls="modal">${icon('settings')} Visitor analytics</button>` : ''}</nav><span class="footer-hosts">${hosts.map(h => `<a href="${h.href}" target="_blank" rel="noopener" title="${esc(h.name)}"><img src="${h.img}" alt="${esc(h.alt)}" width="26" height="26"></a>`).join('')}</span></footer>`; }
 function home() {
   const closed = state.demo || !state.registration.open, e = state.event, maps = `https://www.google.com/maps/search/?api=1&amp;query=${encodeURIComponent(state.event.venue)}`;
   return `<div class="public-wrap">${publicHeader()}<main><section class="poster-hero" aria-labelledby="event-title">
@@ -604,7 +604,11 @@ function live() {
   const ready = state.matches.filter(m => m.status === 'ready').slice(0, 4), final = state.matches.at(-1);
   return `<div class="live-screen"><header class="live-header">${logo()}<div class="live-title">${esc(state.event.venue)}<small>THE COMMUNITY CARROM TOURNAMENT · ${esc(state.event.year)}</small></div><div>${state.practice ? badge('PRACTICE', 'orange') : badge('LIVE TOURNAMENT', 'green')}<span class="connection" data-connection></span></div></header><main><div class="live-heading"><div><div class="eyebrow">EVERY COIN COUNTS</div><h1>${final?.winner ? 'We have a champion.' : 'Four boards. All the action.'}</h1><p>${final?.winner ? `Congratulations, ${esc(name(final.winner))}!` : 'Find your team. Follow the game. Cheer them on.'}</p></div><a class="live-qr" data-link-qr="/results" hidden><img alt="QR code: results on your phone" width="132" height="132"><div><span>ON YOUR PHONE</span><strong class="qr-scan">Scan for results</strong><strong class="qr-tap">Open live results ›</strong><small>Every result and the bracket, updated live.</small><code></code></div></a></div>${boardShortcuts()}<div class="boards-grid live-boards">${state.boards.map(b => boardCard(b, true)).join('')}</div><section class="live-next"><div><span class="eyebrow">GET READY</span><h2>Up next</h2></div>${ready.length ? ready.map(m => `<article><span>${m.id} · ${esc(m.roundName)}</span><strong>${esc(name(m.teamA))}<small>vs</small>${esc(name(m.teamB))}</strong><p>${esc(m.blockedReason || 'Please stay near the playing area')}</p></article>`).join('') : '<p>Next matches will appear as the tournament progresses.</p>'}</section></main><footer><span>${esc(formatLabel())}</span><span class="live-foot-links">${pagesMode && (state.practice || !state.event.practiceOff) ? `<button class="practice-switch" data-action="practice" data-on="${!state.practice}">${state.practice ? 'Exit practice mode' : 'Switch to practice mode'}</button>` : ''}<a href="/results">Results ${icon('arrow')}</a><a href="/">Back to tournament ${icon('arrow')}</a></span></footer></div>`;
 }
-function dialog(content) { modal.innerHTML = `<button class="modal-close" data-action="close" aria-label="Close dialog">×</button>${content}`; modal.showModal(); }
+function dialog(content) { modal.removeAttribute('aria-label'); modal.innerHTML = `<button class="modal-close" data-action="close" aria-label="Close dialog">×</button>${content}`; modal.showModal(); }
+function analyticsSettingsDialog() {
+  dialog(`<div class="eyebrow">YOUR PRIVACY</div><h2>Visitor analytics</h2><p>Google Analytics and Microsoft Clarity measure visits, clicks and scrolling without analytics cookies. Player details are masked in replays.</p><p>You can turn visitor analytics on or off for this browser. Your choice is saved on this device.</p><div class="dialog-actions"><button type="button" class="btn outline" data-action="close">Close</button><button type="button" class="btn primary" data-action="analytics-toggle">${analyticsPreferenceLabel()}</button></div>`);
+  modal.setAttribute('aria-label', 'Visitor analytics');
+}
 function assignDialog(matchId, boardId) {
   const free = state.boards.filter(b => b.availableAt <= now() && !active().some(m => m.board === b.id));
   const ready = state.matches.filter(m => m.status === 'ready' && !m.blockedReason);
@@ -646,6 +650,8 @@ document.addEventListener('click', async event => {
   const b = event.target.closest('[data-action]'); if (!b) return; const { action, id } = b.dataset;
   try {
     if (action === 'close') return modal.close();
+    if (action === 'analytics-settings') return analyticsSettingsDialog();
+    if (action === 'analytics-toggle') { b.textContent = toggleAnalytics(); return; }
     if (action === 'retry') return sync();
     if (action === 'menu') return setMenu(!menuOpen);
     if (action === 'account') return accountDialog();

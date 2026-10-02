@@ -90,13 +90,12 @@ function trackPage() {
   lastPage = context.page; previousLocation = url;
 }
 
-document.addEventListener('click', event => {
-  const button = event.target.closest('[data-analytics-settings]'); if (!button) return;
+export function toggleAnalytics() {
   optedOut = !optedOut;
   try { localStorage.setItem(preferenceKey, optedOut ? 'denied' : 'granted'); } catch {}
   if (optedOut) suspend(); else trackPage();
-  button.textContent = analyticsPreferenceLabel();
-});
+  return analyticsPreferenceLabel();
+}
 
 export function updateAnalytics(page, state, pagesMode) {
   context = { page, state, pagesMode };

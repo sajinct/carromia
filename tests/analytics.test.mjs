@@ -23,10 +23,10 @@ function browser({ consent = null, hash = '#/', search = '', hostname = 'sajinct
   const location = { origin: `https://${hostname}`, hostname, pathname, search, hash };
   const env = { window, document, location, URL, analyticsConfig: config || { ga4MeasurementId: 'G-TEST123', clarityProjectId: 'test123' },
     localStorage: { getItem: key => stored.get(key) ?? null, setItem: (key, value) => stored.set(key, value) } };
-  const api = runInNewContext(`${source}\n({ updateAnalytics, trackAnalyticsEvent, beforeAnalyticsNavigation, analyticsPreferenceLabel });`, env);
+  const api = runInNewContext(`${source}\n({ updateAnalytics, trackAnalyticsEvent, beforeAnalyticsNavigation, analyticsPreferenceLabel, toggleAnalytics });`, env);
   return { ...api, window, location, scripts, panels, handlers, stored,
     update(page = '/', state = {}) { api.updateAnalytics(page, state, true); },
-    toggle() { const button = {}; handlers.click({ target: { closest: () => button } }); return button.textContent; },
+    toggle() { return api.toggleAnalytics(); },
     events() { return Array.from(window.dataLayer || [], args => Array.from(args)); } };
 }
 
