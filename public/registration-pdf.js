@@ -48,7 +48,7 @@ export function registrationPdf(jsPDF, { team, event, qr = '', lunchQr = '', pho
 
   let y = 43;
   font(8.5, 'normal', muted);
-  text(`${longDate(event.date)}  |  Reporting time ${event.startTime ? clock(event.startTime) : '9:00 AM'}  |  ${event.venue}`, mid, y, { align: 'center', maxWidth: W - 2 * M });
+  text(`${longDate(event.date)}  |  Reporting time ${event.startTime ? clock(event.startTime) : '10:00 AM'}  |  ${event.venue}`, mid, y, { align: 'center', maxWidth: W - 2 * M });
 
   // Team and check-in QR code.
   y = 48; const qrSize = 38;

@@ -163,7 +163,7 @@ flowchart LR
   J --> K[Final → Champions]
 ```
 
-**Suggested timetable on the day** (from the published schedule): check-in 9:00 AM · opening 9:30 · preliminary round 10:00 · lunch 1:30 PM · quarterfinals 2:30 · finals 4:30 · awards 5:30.
+**Suggested timetable on the day** (from the published schedule): registration 10:00 AM · inauguration 10:30 · matches start 11:00 · lunch 1:30 PM · quarterfinals 2:30 · finals 4:30 · awards 5:30.
 
 | When | Who | What |
 |---|---|---|
