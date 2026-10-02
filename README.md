@@ -6,12 +6,33 @@ A responsive tournament website and installable web app for CARROMIA 2026, the f
 
 ## Live site (GitHub Pages + Supabase)
 
-https://sajinct.github.io/carromia/ is the live event site. The static app talks to Supabase directly: every visitor sees the same boards and bracket, updated within a second or two over Supabase Realtime, and officials run the desk from any phone or laptop.
+https://carromia.marymathachurchvijayanagar.com is the live event site. The static app talks to Supabase directly: every visitor sees the same boards and bracket, updated within a second or two over Supabase Realtime, and officials run the desk from any phone or laptop.
 
 - **Visitors** read `tournament_public`, a copy without mobile numbers, check-in tokens or desk activity.
 - **Officials** sign in with their Supabase email and password. Their browser applies the tournament rules and saves through `save_tournament()`, which checks they are an official, rejects a save if someone else saved first (the app reloads and retries automatically), updates both copies together and writes the audit log.
 - **Registration** goes through the `registration` Edge Function, which uploads the players' photos and any payment screenshot to Supabase Storage and then calls `register_team()`, which enforces the same rules as the app. It stays closed while the sample tournament is loaded.
 - **Pictures** are files in Supabase Storage, not in the database. Player photos (up to 2000px, with a 320px thumbnail for lists and the registration form) and payment screenshots go in the private `team-files` bucket, which only officials can open (through links that expire after an hour). The UPI QR code is in the public `event-assets` bucket at its full resolution. The database keeps only each file's path.
+
+### Visitor analytics (Google Analytics + Microsoft Clarity)
+
+Both integrations are ready in `public/analytics.js`; no tracking is sent until IDs are configured and a visitor allows analytics. Add the public IDs to `public/analytics-config.js` (they are not API secrets):
+
+```js
+export const analyticsConfig = {
+  ga4MeasurementId: 'G-YOURMEASUREMENTID',
+  clarityProjectId: 'yourprojectid'
+};
+```
+
+1. **Google Analytics:** open https://analytics.google.com/, create an account/property named CARROMIA, select the India timezone and INR, then create a **Web** data stream for `https://carromia.marymathachurchvijayanagar.com`. Copy the **Measurement ID** beginning `G-` from **Admin → Data streams → your web stream**.
+2. **Turn off Enhanced measurement** in that stream. This app sends pageviews itself, including its hash navigation. Automatic history, form and download tracking would duplicate pageviews and could collect URLs containing QR tokens or identifiers. See [Google's manual pageview instructions](https://developers.google.com/analytics/devguides/collection/ga4/views).
+3. **Microsoft Clarity:** open https://clarity.microsoft.com/, create a project named CARROMIA for the same address, and copy the **Project ID** from **Settings → Overview**. Under **Settings → Setup**, turn off setting cookies by default; the site passes the visitor's consent through `consentv2`. See [Clarity Consent Mode](https://learn.microsoft.com/en-us/clarity/setup-and-installation/consent-mode).
+4. Save the IDs, run `npm test` and `npm run build:pages`, then publish using the existing Pages workflow (a push to `main`). Leaving either ID blank disables that provider.
+5. Open the live site in a fresh browser window, allow analytics, and visit Home, Rules and Registration. Confirm pageviews in **GA4 → Reports → Realtime** and a session in **Clarity → Recordings** once processing finishes. GA4 shows virtual paths such as `/register` on the custom domain (or `/carromia/register` on the repository URL) so each app screen has its own report row. In Clarity, **Settings → Setup → Google Analytics** can connect the dashboards.
+
+The public pages tracked are Home, Rules, Registration, Teams, Results and Live boards. A successful registration sends `registration_complete` once per submission (including a group registration); a successful registration PDF download sends `registration_form_download`. Mark `registration_complete` as a key event in GA4 when it first appears. These events contain no participant or payment details.
+
+Analytics is off on localhost, in practice mode, on the desk/check-in/lunch pages and for signed-in officials. Clarity masks the registration form and its confirmation, dialogs, notifications, and the content of team/results/live screens, including player names, pictures and QR images; the layout remains useful for heatmaps. Clarity doesn't start on URLs with query parameters. If replay was already running, entering a private screen or a query-bearing link stops it before the next app render; it stays stopped until a full page reload. GA4 always receives clean URLs without query parameters or QR tokens. Visitors can decline or withdraw consent using **Analytics preferences** in the footer; recordings resume after a page reload if they later opt in again.
 
 ### One-time setup
 

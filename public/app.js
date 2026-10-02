@@ -2,6 +2,7 @@ import { pagesMode, remoteApi, watch } from './runtime.js';
 import { prizes, timeline, massTimes, venueAddress, about, documents, goodToKnow, ruleSections, matchFormat, formatText } from './info.js';
 import { groups, centres, centreTypes, idTypes } from './parishes.js';
 import { registrationPdf, groupRegistrationPdf } from './registration-pdf.js';
+import { analyticsEnabled, beforeAnalyticsNavigation, updateAnalytics, trackAnalyticsEvent } from './analytics.js';
 const route = () => pagesMode ? (location.hash.slice(1) || '/').split('?')[0] : location.pathname;
 const $ = (s, root = document) => root.querySelector(s);
 const app = $('#app'), modal = $('#modal');
@@ -68,11 +69,13 @@ async function sync(renderPage = true) {
   catch (e) { connected = false; if (!state) app.innerHTML = `<div class="error-screen"><h1>Unable to reach the tournament</h1><p>${pagesMode ? 'Check your internet connection and try again.' : 'Make sure the local server is running.'}</p><button class="btn primary" data-action="retry">Try again</button></div>`; }
   updateConnection();
 }
-function navigate(path) { menuOpen = false; page = path.split('?')[0]; history.pushState({}, '', pagesMode ? `#${path}` : path); render(); window.scrollTo(0, 0); }
-window.addEventListener('popstate', () => { page = route(); render(); });
+function navigate(path) { beforeAnalyticsNavigation(path); menuOpen = false; page = path.split('?')[0]; history.pushState({}, '', pagesMode ? `#${path}` : path); render(); window.scrollTo(0, 0); }
+window.addEventListener('popstate', () => { beforeAnalyticsNavigation(pagesMode ? location.hash.slice(1) : location.pathname + location.search); page = route(); render(); });
 function updateConnection() { document.querySelectorAll('[data-connection]').forEach(el => { const label = connected ? 'Live updates connected' : 'Reconnecting — data may be outdated'; el.innerHTML = `<span class="connection-label">${label}</span><span class="connection-short" aria-hidden="true">${connected ? 'Live' : 'Reconnecting'}</span>`; el.title = label; el.classList.toggle('disconnected', !connected); }); }
 function render() {
   if (!state) return;
+  // Suspend tracking before any private desk content is inserted into the DOM.
+  if (state.isAdmin || state.practice || !['/', '/rules', '/register', '/teams', '/results', '/live'].includes(page)) updateAnalytics(page, state, pagesMode);
   document.title = `CARROMIA ${state.event.year} · ${page.startsWith('/admin') ? 'Tournament desk' : page === '/live' ? 'Live boards' : page === '/register' ? 'Register your team' : page === '/rules' ? 'Rules' : page === '/teams' ? 'Teams' : page === '/results' ? 'Results' : 'Every coin counts'}`;
   if (page.startsWith('/admin') || page === '/checkin' || page === '/lunch') app.innerHTML = state.isAdmin ? desk() : login();
   else if (page === '/live') app.innerHTML = live();
@@ -90,7 +93,11 @@ function render() {
   app.querySelectorAll('[data-link-qr]').forEach(showLinkQr);
   const registrationForm = $('#registration-form'); if (registrationForm) syncTeamEntries(registrationForm);
   const main = app.querySelector('main'); if (main) { main.id = 'main-content'; main.tabIndex = -1; }
+  // Hide player names, photos, confirmations and QR codes from replay collection.
+  if (['/teams', '/results', '/live'].includes(page)) main?.setAttribute('data-clarity-mask', 'true');
+  if (page === '/register') app.querySelector('.form-card')?.setAttribute('data-clarity-mask', 'true');
   labelTables(app); updateConnection(); tick(); measureBanner();
+  updateAnalytics(page, state, pagesMode);
 }
 // On phones the desk's top bar sticks just below the practice banner, whatever its height.
 function measureBanner() { app.style.setProperty('--banner-height', `${$('.practice-banner')?.offsetHeight || 0}px`); }
@@ -143,7 +150,7 @@ function publicMenu() {
   const links = [...publicNavLinks(), ['/admin', 'shield', 'Tournament desk']];
   return `<button class="menu-toggle" data-action="menu" aria-label="Menu" aria-controls="mobile-menu" aria-expanded="${menuOpen}">${icon('menu')}</button><div class="mobile-menu ${menuOpen ? 'open' : ''}" id="mobile-menu">${links.map(([p, i, text]) => `<a href="${p}" class="${page === p ? 'active' : ''}" ${page === p ? 'aria-current="page"' : ''}>${icon(i)} ${text}</a>`).join('')}</div>`;
 }
-function footer() { return `<footer><span>© ${esc(state.event.year)} CARROMIA · Hosted by Mary Matha Church, Vijayanagar · Diocese of Mandya</span><nav class="footer-links" aria-label="Footer navigation"><a href="/live">${icon('screen')} Live boards</a><a class="footer-desk" href="/admin">${icon('shield')} Tournament desk</a></nav><span class="footer-hosts">${hosts.map(h => `<a href="${h.href}" target="_blank" rel="noopener" title="${esc(h.name)}"><img src="${h.img}" alt="${esc(h.alt)}" width="26" height="26"></a>`).join('')}</span></footer>`; }
+function footer() { return `<footer><span>© ${esc(state.event.year)} CARROMIA · Hosted by Mary Matha Church, Vijayanagar · Diocese of Mandya</span><nav class="footer-links" aria-label="Footer navigation"><a href="/live">${icon('screen')} Live boards</a><a class="footer-desk" href="/admin">${icon('shield')} Tournament desk</a>${analyticsEnabled() ? '<button type="button" class="analytics-preferences" data-analytics-settings>Analytics preferences</button>' : ''}</nav><span class="footer-hosts">${hosts.map(h => `<a href="${h.href}" target="_blank" rel="noopener" title="${esc(h.name)}"><img src="${h.img}" alt="${esc(h.alt)}" width="26" height="26"></a>`).join('')}</span></footer>`; }
 function home() {
   const closed = state.demo || !state.registration.open, e = state.event, maps = `https://www.google.com/maps/search/?api=1&amp;query=${encodeURIComponent(state.event.venue)}`;
   return `<div class="public-wrap">${publicHeader()}<main><section class="poster-hero" aria-labelledby="event-title">
@@ -370,10 +377,12 @@ async function imageData(src) {
 async function saveGroupPdf(forms) {
   const [jsPDF, logos, photos] = await Promise.all([loadJsPdf(), pdfLogos(), Promise.all(forms.map(form => Promise.all((form.photos || []).map(imageData))))]);
   groupRegistrationPdf(jsPDF, { forms: forms.map((form, i) => ({ ...form, photos: photos[i] })), event: state.event, logos }).save(`${forms[0].team.group?.id ?? forms[0].team.id}-registration-forms.pdf`);
+  trackAnalyticsEvent('registration_form_download');
 }
 async function saveRegistrationPdf(team, qr, teamPhotos = [], lunchQr = '') {
   const [jsPDF, logos, photos] = await Promise.all([loadJsPdf(), pdfLogos(), Promise.all(teamPhotos.map(imageData))]);
   registrationPdf(jsPDF, { team, event: state.event, qr, lunchQr, photos, logos }).save(`${team.id}-registration-form.pdf`);
+  trackAnalyticsEvent('registration_form_download');
 }
 function rulesPage() {
   let number = 0;
@@ -760,6 +769,7 @@ document.addEventListener('submit', async event => {
       const coordinator = entries.length > 1 ? { name: fields.coordinatorName, mobile: fields.coordinatorMobile } : undefined;
       const reply = await api('register', { forane: fields.forane, parish: parish.join('|'), centreType, adults: fields.adults === 'on', teams: entries.map(e => e.team), coordinator, payment });
       const registered = reply.teams || [reply.team];
+      trackAnalyticsEvent('registration_complete');
       if (registered.length > 1) { form.closest('.form-card').innerHTML = await groupConfirmation(registered, entries.map(e => e.thumbs)); return; }
       const [t] = registered, { thumbs } = entries[0];
       if (t.status === 'pending') { form.closest('.form-card').innerHTML = pendingConfirmation(t); return; }
