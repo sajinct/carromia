@@ -9,7 +9,7 @@ export const prizes = [
 ];
 
 export const timeline = [
-  ['09:00 AM', 'Check-in'],
+  ['10:00 AM', 'Registration (10:00 – 10:30 AM)'],
   ['09:30 AM', 'Opening ceremony'],
   ['10:00 AM', 'Preliminary round'],
   ['01:30 PM', 'Lunch break'],
@@ -18,7 +18,8 @@ export const timeline = [
   ['05:30 PM', 'Awards']
 ];
 
-export const massTimes = ['7:00 AM', '9:00 AM'];
+export const massTimes = ['8:30 AM'];
+export const massVenue = 'St Claret’s Hall, Mary Matha Church, Vijayanagar';
 
 export const venueAddress = '24, Church Service Road, Sri Krishnadevaraya Rd, Hoshalli Extension, Stage 1, Vijayanagar, Bengaluru, Karnataka 560040';
 
@@ -32,7 +33,7 @@ export const documents = [
 ];
 
 export const goodToKnow = [
-  'Reporting time is 9:00 AM.',
+  'Registration is between 10:00 AM and 10:30 AM.',
   'Water and snacks are provided for participants only.',
   'Lunch is available to participants who pre-book it in the online registration form.',
   'The tournament desk may refuse check-in if a player, their ID proof or the attested form does not match the registration.'
