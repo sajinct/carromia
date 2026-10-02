@@ -1,7 +1,7 @@
 /* CARROMIA's event identity: deep teal, tournament gold and warm board ivory. */
 :root{--bg:#f8f5ee;--paper:#fffdf8;--green:#123b3d;--green-2:#235b5a;--lime:#f4cf66;--ink:#203337;--muted:#66716e;--line:#e1ddd2;--soft:#eef1e8;--orange:#986329;--radius:14px;--gold:#f5ca55;--queen:#b84435}
 body{background:var(--bg)}
-/* Rounded, visible scroll handles for pages, brackets, tables and dialogs. */
+/* Slim, rounded scroll handles for pages, brackets, tables and dialogs. */
 :root{
   --scrollbar-track:#eee8dc;
   --scrollbar-thumb:#59776d;
@@ -19,11 +19,11 @@ body{background:var(--bg)}
 /* Chromium and Safari use the shaped handles; Firefox uses the rules above. */
 @supports selector(::-webkit-scrollbar){
   *{scrollbar-width:auto;scrollbar-color:auto}
-  *::-webkit-scrollbar{width:12px;height:12px}
+  *::-webkit-scrollbar{width:6px;height:6px}
   *::-webkit-scrollbar-track{background:var(--scrollbar-track);border-radius:20px}
   *::-webkit-scrollbar-thumb{
     background:var(--scrollbar-thumb);
-    border:3px solid var(--scrollbar-track);
+    border:1px solid var(--scrollbar-track);
     border-radius:20px;
     min-height:44px;
     min-width:44px;
