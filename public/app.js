@@ -2,7 +2,7 @@ import { pagesMode, remoteApi, watch } from './runtime.js';
 import { prizes, timeline, massTimes, venueAddress, about, documents, goodToKnow, ruleSections, matchFormat, formatText } from './info.js';
 import { groups, centres, centreTypes, idTypes } from './parishes.js';
 import { registrationPdf, groupRegistrationPdf } from './registration-pdf.js';
-import { analyticsEnabled, beforeAnalyticsNavigation, updateAnalytics, trackAnalyticsEvent } from './analytics.js';
+import { analyticsEnabled, analyticsPreferenceLabel, beforeAnalyticsNavigation, updateAnalytics, trackAnalyticsEvent } from './analytics.js';
 const route = () => pagesMode ? (location.hash.slice(1) || '/').split('?')[0] : location.pathname;
 const $ = (s, root = document) => root.querySelector(s);
 const app = $('#app'), modal = $('#modal');
@@ -150,7 +150,7 @@ function publicMenu() {
   const links = [...publicNavLinks(), ['/admin', 'shield', 'Tournament desk']];
   return `<button class="menu-toggle" data-action="menu" aria-label="Menu" aria-controls="mobile-menu" aria-expanded="${menuOpen}">${icon('menu')}</button><div class="mobile-menu ${menuOpen ? 'open' : ''}" id="mobile-menu">${links.map(([p, i, text]) => `<a href="${p}" class="${page === p ? 'active' : ''}" ${page === p ? 'aria-current="page"' : ''}>${icon(i)} ${text}</a>`).join('')}</div>`;
 }
-function footer() { return `<footer><span>© ${esc(state.event.year)} CARROMIA · Hosted by Mary Matha Church, Vijayanagar · Diocese of Mandya</span><nav class="footer-links" aria-label="Footer navigation"><a href="/live">${icon('screen')} Live boards</a><a class="footer-desk" href="/admin">${icon('shield')} Tournament desk</a>${analyticsEnabled() ? '<button type="button" class="analytics-preferences" data-analytics-settings>Analytics preferences</button>' : ''}</nav><span class="footer-hosts">${hosts.map(h => `<a href="${h.href}" target="_blank" rel="noopener" title="${esc(h.name)}"><img src="${h.img}" alt="${esc(h.alt)}" width="26" height="26"></a>`).join('')}</span></footer>`; }
+function footer() { return `<footer><span>© ${esc(state.event.year)} CARROMIA · Hosted by Mary Matha Church, Vijayanagar · Diocese of Mandya</span><nav class="footer-links" aria-label="Footer navigation"><a href="/live">${icon('screen')} Live boards</a><a class="footer-desk" href="/admin">${icon('shield')} Tournament desk</a>${analyticsEnabled() ? `<details class="analytics-disclosure"><summary>Visitor analytics</summary><p>Google Analytics and Microsoft Clarity measure visits and interactions without analytics cookies. Player details are masked in replays.</p><button type="button" class="analytics-preferences" data-analytics-settings>${analyticsPreferenceLabel()}</button></details>` : ''}</nav><span class="footer-hosts">${hosts.map(h => `<a href="${h.href}" target="_blank" rel="noopener" title="${esc(h.name)}"><img src="${h.img}" alt="${esc(h.alt)}" width="26" height="26"></a>`).join('')}</span></footer>`; }
 function home() {
   const closed = state.demo || !state.registration.open, e = state.event, maps = `https://www.google.com/maps/search/?api=1&amp;query=${encodeURIComponent(state.event.venue)}`;
   return `<div class="public-wrap">${publicHeader()}<main><section class="poster-hero" aria-labelledby="event-title">

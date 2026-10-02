@@ -8,10 +8,12 @@ const publicPages = new Map([
   ['/teams', 'Teams'], ['/results', 'Results'], ['/live', 'Live boards']
 ]);
 const eventNames = new Set(['registration_complete', 'registration_form_download']);
-let consent; try { consent = localStorage.getItem(preferenceKey); } catch {}
-let context, lastPage, previousLocation = '', ga4Started = false, clarityStarted = false, clarityStopped = false, panel;
+// Preserve previous opt-outs. New visitors receive cookieless measurement automatically.
+let optedOut = false; try { optedOut = localStorage.getItem(preferenceKey) === 'denied'; } catch {}
+let context, lastPage, previousLocation = '', ga4Started = false, clarityStarted = false, clarityStopped = false;
 
 export function analyticsEnabled() { return Boolean(ga4Id || clarityId); }
+export function analyticsPreferenceLabel() { return optedOut ? 'Enable visitor analytics' : 'Disable visitor analytics'; }
 
 function eligible() {
   return analyticsEnabled() && context && publicPages.has(context.page) && !context.state.isAdmin && !context.state.practice
@@ -50,13 +52,14 @@ export function beforeAnalyticsNavigation(path) {
 }
 
 function start() {
-  if (consent !== 'granted' || !eligible()) return;
+  if (optedOut || !eligible()) return;
   if (ga4Id) {
     window[`ga-disable-${ga4Id}`] = false;
     if (!ga4Started) {
       window.dataLayer = window.dataLayer || [];
       window.gtag = window.gtag || function () { window.dataLayer.push(arguments); };
-      window.gtag('consent', 'default', { analytics_storage: 'granted', ad_storage: 'denied', ad_user_data: 'denied', ad_personalization: 'denied' });
+      // No analytics cookies, advertising identifiers or inferred consent.
+      window.gtag('consent', 'default', { analytics_storage: 'denied', ad_storage: 'denied', ad_user_data: 'denied', ad_personalization: 'denied' });
       window.gtag('js', new Date());
       window.gtag('config', ga4Id, {
         send_page_view: false, allow_google_signals: false, allow_ad_personalization_signals: false,
@@ -69,7 +72,7 @@ function start() {
   // Clarity reads the actual address. Skip deep links with query parameters entirely.
   if (clarityId && !clarityStarted && !location.search && !location.hash.includes('?')) {
     window.clarity = window.clarity || function () { (window.clarity.q = window.clarity.q || []).push(arguments); };
-    window.clarity('consentv2', { analytics_Storage: 'granted', ad_Storage: 'denied' });
+    window.clarity('consentv2', { analytics_Storage: 'denied', ad_Storage: 'denied' });
     clarityStarted = true;
     script(`https://www.clarity.ms/tag/${clarityId}`);
   }
@@ -77,7 +80,7 @@ function start() {
 
 function trackPage() {
   start();
-  if (consent !== 'granted' || !eligible() || lastPage === context.page) return;
+  if (optedOut || !eligible() || lastPage === context.page) return;
   const url = cleanLocation();
   if (ga4Started) {
     const fields = { page_location: url, page_title: `CARROMIA · ${publicPages.get(context.page)}`, page_referrer: previousLocation || cleanReferrer(document.referrer) };
@@ -87,43 +90,23 @@ function trackPage() {
   lastPage = context.page; previousLocation = url;
 }
 
-function showPreferences(expanded = false) {
-  if (!panel) {
-    panel = document.createElement('aside'); panel.className = 'analytics-consent';
-    panel.setAttribute('aria-label', 'Visitor analytics preferences');
-    document.body.append(panel);
-  }
-  panel.hidden = !eligible() || (!expanded && Boolean(consent));
-  if (panel.hidden) return;
-  panel.innerHTML = '<strong>Allow visitor analytics?</strong><p>Google Analytics measures visits and registrations. Microsoft Clarity shows clicks and scrolling to help us improve the site. These tools use cookies. Registration details are masked in replays. You can change your choice using Analytics preferences in the footer.</p><div><button type="button" class="btn outline small" data-analytics-choice="denied">Decline</button><button type="button" class="btn primary small" data-analytics-choice="granted">Allow analytics</button></div>';
-  panel.querySelectorAll('[data-analytics-choice]').forEach(button => button.addEventListener('click', () => {
-    consent = button.dataset.analyticsChoice;
-    try { localStorage.setItem(preferenceKey, consent); } catch {}
-    panel.hidden = true;
-    if (consent === 'granted') {
-      if (ga4Started) window.gtag('consent', 'update', { analytics_storage: 'granted' });
-      trackPage();
-    } else {
-      if (ga4Started) window.gtag('consent', 'update', { analytics_storage: 'denied' });
-      if (clarityStarted) window.clarity('consentv2', { analytics_Storage: 'denied', ad_Storage: 'denied' });
-      suspend();
-    }
-  }));
-}
-
 document.addEventListener('click', event => {
-  if (event.target.closest('[data-analytics-settings]')) showPreferences(true);
+  const button = event.target.closest('[data-analytics-settings]'); if (!button) return;
+  optedOut = !optedOut;
+  try { localStorage.setItem(preferenceKey, optedOut ? 'denied' : 'granted'); } catch {}
+  if (optedOut) suspend(); else trackPage();
+  button.textContent = analyticsPreferenceLabel();
 });
 
 export function updateAnalytics(page, state, pagesMode) {
   context = { page, state, pagesMode };
   if (!eligible()) suspend();
   if (location.search || location.hash.includes('?')) stopReplay();
-  showPreferences(); trackPage();
+  trackPage();
 }
 
 export function trackAnalyticsEvent(name) {
-  if (consent !== 'granted' || !eligible() || !eventNames.has(name)) return;
+  if (optedOut || !eligible() || !eventNames.has(name)) return;
   // No form fields, team identifiers, payment references, photos or QR tokens.
   if (ga4Started) window.gtag('event', name, { send_to: ga4Id, page_location: cleanLocation() });
   if (clarityStarted && !clarityStopped) window.clarity('event', name);

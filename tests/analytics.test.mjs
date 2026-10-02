@@ -16,38 +16,42 @@ function browser({ consent = null, hash = '#/', search = '', hostname = 'sajinct
     addEventListener: (name, fn) => { handlers[name] = fn; },
     createElement: tag => {
       if (tag === 'script') return {};
-      const buttons = ['denied', 'granted'].map(choice => ({ dataset: { analyticsChoice: choice }, addEventListener: (_, fn) => { buttons.find(b => b.dataset.analyticsChoice === choice).click = fn; } }));
-      return { hidden: false, setAttribute() {}, querySelectorAll: () => buttons, buttons };
+      return { setAttribute() {} };
     }
   };
   const window = {};
   const location = { origin: `https://${hostname}`, hostname, pathname, search, hash };
   const env = { window, document, location, URL, analyticsConfig: config || { ga4MeasurementId: 'G-TEST123', clarityProjectId: 'test123' },
     localStorage: { getItem: key => stored.get(key) ?? null, setItem: (key, value) => stored.set(key, value) } };
-  const api = runInNewContext(`${source}\n({ updateAnalytics, trackAnalyticsEvent, beforeAnalyticsNavigation });`, env);
+  const api = runInNewContext(`${source}\n({ updateAnalytics, trackAnalyticsEvent, beforeAnalyticsNavigation, analyticsPreferenceLabel });`, env);
   return { ...api, window, location, scripts, panels, handlers, stored,
     update(page = '/', state = {}) { api.updateAnalytics(page, state, true); },
-    choose(choice) { panels.at(-1).buttons.find(b => b.dataset.analyticsChoice === choice).click(); },
+    toggle() { const button = {}; handlers.click({ target: { closest: () => button } }); return button.textContent; },
     events() { return Array.from(window.dataLayer || [], args => Array.from(args)); } };
 }
 
-test('unconfigured analytics and visitors without consent send no requests', () => {
+test('unconfigured analytics and previous opt-outs send no requests or popups', () => {
   const disabled = browser({ consent: 'granted', config: { ga4MeasurementId: '', clarityProjectId: '' } });
-  disabled.update(); assert.deepEqual(disabled.scripts, []); assert.equal(disabled.panels[0].hidden, true);
-  const visitor = browser(); visitor.update();
-  assert.deepEqual(visitor.scripts, []); assert.equal(visitor.panels[0].hidden, false);
-  visitor.choose('denied'); visitor.update('/rules');
-  assert.deepEqual(visitor.scripts, []); assert.equal(visitor.panels[0].hidden, true);
+  disabled.update(); assert.deepEqual(disabled.scripts, []); assert.equal(disabled.panels.length, 0);
+  const visitor = browser({ consent: 'denied' }); visitor.update(); visitor.update('/rules');
+  visitor.trackAnalyticsEvent('registration_complete');
+  assert.deepEqual(visitor.scripts, []); assert.equal(visitor.panels.length, 0); assert.deepEqual(visitor.events(), []);
 });
 
-test('opt-in loads each provider once and real navigation sends distinct pageviews', () => {
-  const visitor = browser(); visitor.update(); visitor.choose('granted');
+test('public visits load each provider automatically without cookies or a popup', () => {
+  const visitor = browser(); visitor.update();
   visitor.update(); visitor.update('/rules'); visitor.update('/rules'); visitor.update('/');
   assert.deepEqual(visitor.scripts, ['https://www.googletagmanager.com/gtag/js?id=G-TEST123', 'https://www.clarity.ms/tag/test123']);
   const views = visitor.events().filter(([command, name]) => command === 'event' && name === 'page_view');
   assert.deepEqual(views.map(([, , fields]) => fields.page_location), ['https://sajinct.github.io/carromia/', 'https://sajinct.github.io/carromia/rules', 'https://sajinct.github.io/carromia/']);
   assert.equal(visitor.events().find(([command]) => command === 'config')[2].send_page_view, false);
   assert.equal(views[0][2].page_referrer, 'https://example.org/');
+  assert.equal(visitor.panels.length, 0);
+  const defaults = visitor.events()[0];
+  assert.equal(defaults[0], 'consent'); assert.equal(defaults[1], 'default');
+  assert.deepEqual(Object.values(defaults[2]), ['denied', 'denied', 'denied', 'denied']);
+  assert.equal(visitor.window.clarity.q[0][0], 'consentv2');
+  assert.deepEqual(Object.values(visitor.window.clarity.q[0][1]), ['denied', 'denied']);
 });
 
 test('private screens, practice, officials and local previews never initialize tracking', () => {
@@ -88,15 +92,27 @@ test('private navigation stops replay before routing and suppresses later events
   assert.equal(visitor.window.clarity.q.at(-1)[0], 'stop', 'stopped replay stays off until reload');
 });
 
-test('revoking consent disables providers immediately and persists the choice', () => {
-  const visitor = browser({ consent: 'granted' }); visitor.update();
-  visitor.handlers.click({ target: { closest: () => ({}) } }); visitor.choose('denied');
+test('the footer opt-out disables providers immediately and persists the choice', () => {
+  const visitor = browser(); visitor.update();
+  assert.equal(visitor.toggle(), 'Enable visitor analytics');
   const before = visitor.events().length;
   visitor.update('/register'); visitor.trackAnalyticsEvent('registration_complete');
   assert.equal(visitor.events().length, before);
   assert.equal(visitor.window['ga-disable-G-TEST123'], true);
   assert.equal(visitor.window.clarity.q.at(-1)[0], 'stop');
   assert.equal(visitor.stored.get('carromia-analytics-consent-v1'), 'denied');
+  assert.equal(visitor.panels.length, 0);
+});
+
+test('enabling measurement after an opt-out never grants analytics cookie consent', () => {
+  const visitor = browser({ consent: 'denied' }); visitor.update();
+  assert.equal(visitor.toggle(), 'Disable visitor analytics');
+  assert.equal(visitor.scripts.length, 2);
+  assert.equal(visitor.events()[0][2].analytics_storage, 'denied');
+  assert.equal(visitor.window.clarity.q[0][1].analytics_Storage, 'denied');
+  assert.equal(visitor.panels.length, 0);
+  const previousConsent = browser({ consent: 'granted' }); previousConsent.update();
+  assert.equal(previousConsent.events()[0][2].analytics_storage, 'denied', 'legacy permission does not enable cookies in the new mode');
 });
 
 test('only approved conversion events are sent without participant fields', () => {
