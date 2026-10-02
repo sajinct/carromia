@@ -9,9 +9,9 @@ export const prizes = [
 ];
 
 export const timeline = [
-  ['10:00 AM', 'Registration (10:00 – 10:30 AM)'],
-  ['09:30 AM', 'Opening ceremony'],
-  ['10:00 AM', 'Preliminary round'],
+  ['10:00 AM', 'Registration'],
+  ['10:30 AM', 'Inauguration ceremony'],
+  ['11:00 AM', 'Matches start'],
   ['01:30 PM', 'Lunch break'],
   ['02:30 PM', 'Quarter finals'],
   ['04:30 PM', 'Finals'],
