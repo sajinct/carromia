@@ -2,18 +2,32 @@ import { analyticsConfig } from './analytics-config.js';
 
 const ga4Id = /^G-[A-Z0-9]+$/.test(analyticsConfig.ga4MeasurementId) ? analyticsConfig.ga4MeasurementId : '';
 const clarityId = /^[a-z0-9]+$/i.test(analyticsConfig.clarityProjectId) ? analyticsConfig.clarityProjectId : '';
-const preferenceKey = 'carromia-analytics-consent-v1';
+const preferenceKey = 'carromia-analytics-cookie-consent-v2';
 const publicPages = new Map([
   ['/', 'Home'], ['/rules', 'Rules'], ['/register', 'Registration'],
   ['/teams', 'Teams'], ['/results', 'Results'], ['/live', 'Live boards']
 ]);
 const eventNames = new Set(['registration_complete', 'registration_form_download']);
-// Preserve previous opt-outs. New visitors receive cookieless measurement automatically.
-let optedOut = false; try { optedOut = localStorage.getItem(preferenceKey) === 'denied'; } catch {}
+// Older "granted" choices enabled cookieless measurement, not cookies.
+// Preserve older opt-outs, but require a new explicit choice to allow cookies.
+let preference = 'cookieless';
+try {
+  const saved = localStorage.getItem(preferenceKey);
+  if (saved === 'granted' || saved === 'denied') preference = saved;
+  else if (localStorage.getItem('carromia-analytics-consent-v1') === 'denied') preference = 'denied';
+} catch {}
 let context, lastPage, previousLocation = '', ga4Started = false, clarityStarted = false, clarityStopped = false;
 
 export function analyticsEnabled() { return Boolean(ga4Id || clarityId); }
-export function analyticsPreferenceLabel() { return optedOut ? 'Enable visitor analytics' : 'Disable visitor analytics'; }
+export function analyticsPreference() { return preference; }
+
+function googleConsent() {
+  return { analytics_storage: preference === 'granted' ? 'granted' : 'denied', ad_storage: 'denied', ad_user_data: 'denied', ad_personalization: 'denied' };
+}
+
+function clarityConsent() {
+  return { analytics_Storage: preference === 'granted' ? 'granted' : 'denied', ad_Storage: 'denied' };
+}
 
 function eligible() {
   return analyticsEnabled() && context && publicPages.has(context.page) && !context.state.isAdmin && !context.state.practice
@@ -52,14 +66,14 @@ export function beforeAnalyticsNavigation(path) {
 }
 
 function start() {
-  if (optedOut || !eligible()) return;
+  if (preference === 'denied' || !eligible()) return;
   if (ga4Id) {
     window[`ga-disable-${ga4Id}`] = false;
     if (!ga4Started) {
       window.dataLayer = window.dataLayer || [];
       window.gtag = window.gtag || function () { window.dataLayer.push(arguments); };
-      // No analytics cookies, advertising identifiers or inferred consent.
-      window.gtag('consent', 'default', { analytics_storage: 'denied', ad_storage: 'denied', ad_user_data: 'denied', ad_personalization: 'denied' });
+      // Restore only explicit cookie permission; advertising consent stays denied.
+      window.gtag('consent', 'default', googleConsent());
       window.gtag('js', new Date());
       window.gtag('config', ga4Id, {
         send_page_view: false, allow_google_signals: false, allow_ad_personalization_signals: false,
@@ -72,7 +86,7 @@ function start() {
   // Clarity reads the actual address. Skip deep links with query parameters entirely.
   if (clarityId && !clarityStarted && !location.search && !location.hash.includes('?')) {
     window.clarity = window.clarity || function () { (window.clarity.q = window.clarity.q || []).push(arguments); };
-    window.clarity('consentv2', { analytics_Storage: 'denied', ad_Storage: 'denied' });
+    window.clarity('consentv2', clarityConsent());
     clarityStarted = true;
     script(`https://www.clarity.ms/tag/${clarityId}`);
   }
@@ -80,7 +94,7 @@ function start() {
 
 function trackPage() {
   start();
-  if (optedOut || !eligible() || lastPage === context.page) return;
+  if (preference === 'denied' || !eligible() || lastPage === context.page) return;
   const url = cleanLocation();
   if (ga4Started) {
     const fields = { page_location: url, page_title: `CARROMIA · ${publicPages.get(context.page)}`, page_referrer: previousLocation || cleanReferrer(document.referrer) };
@@ -90,11 +104,19 @@ function trackPage() {
   lastPage = context.page; previousLocation = url;
 }
 
-export function toggleAnalytics() {
-  optedOut = !optedOut;
-  try { localStorage.setItem(preferenceKey, optedOut ? 'denied' : 'granted'); } catch {}
-  if (optedOut) suspend(); else trackPage();
-  return analyticsPreferenceLabel();
+export function setAnalyticsPreference(value) {
+  if (!['granted', 'denied'].includes(value) || value === preference) return;
+  preference = value;
+  try { localStorage.setItem(preferenceKey, preference); } catch {}
+  // Update already-loaded providers before measuring any subsequent activity.
+  if (ga4Started) window.gtag('consent', 'update', googleConsent());
+  if (clarityStarted && !clarityStopped) window.clarity('consentv2', clarityConsent());
+  if (preference === 'denied') suspend();
+  else {
+    // Send the current screen with consent, even if a cookieless view was sent earlier.
+    lastPage = undefined;
+    trackPage();
+  }
 }
 
 export function updateAnalytics(page, state, pagesMode) {
@@ -105,7 +127,7 @@ export function updateAnalytics(page, state, pagesMode) {
 }
 
 export function trackAnalyticsEvent(name) {
-  if (optedOut || !eligible() || !eventNames.has(name)) return;
+  if (preference === 'denied' || !eligible() || !eventNames.has(name)) return;
   // No form fields, team identifiers, payment references, photos or QR tokens.
   if (ga4Started) window.gtag('event', name, { send_to: ga4Id, page_location: cleanLocation() });
   if (clarityStarted && !clarityStopped) window.clarity('event', name);

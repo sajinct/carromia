@@ -2,7 +2,7 @@ import { pagesMode, remoteApi, watch } from './runtime.js';
 import { prizes, timeline, massTimes, venueAddress, about, documents, goodToKnow, ruleSections, matchFormat, formatText } from './info.js';
 import { groups, centres, centreTypes, idTypes } from './parishes.js';
 import { registrationPdf, groupRegistrationPdf } from './registration-pdf.js';
-import { analyticsEnabled, analyticsPreferenceLabel, toggleAnalytics, beforeAnalyticsNavigation, updateAnalytics, trackAnalyticsEvent } from './analytics.js';
+import { analyticsEnabled, analyticsPreference, setAnalyticsPreference, beforeAnalyticsNavigation, updateAnalytics, trackAnalyticsEvent } from './analytics.js';
 const route = () => pagesMode ? (location.hash.slice(1) || '/').split('?')[0] : location.pathname;
 const $ = (s, root = document) => root.querySelector(s);
 const app = $('#app'), modal = $('#modal');
@@ -606,7 +606,9 @@ function live() {
 }
 function dialog(content) { modal.removeAttribute('aria-label'); modal.innerHTML = `<button class="modal-close" data-action="close" aria-label="Close dialog">×</button>${content}`; modal.showModal(); }
 function analyticsSettingsDialog() {
-  dialog(`<div class="eyebrow">YOUR PRIVACY</div><h2>Visitor analytics</h2><p>Google Analytics and Microsoft Clarity measure visits, clicks and scrolling without analytics cookies. Player details are masked in replays.</p><p>You can turn visitor analytics on or off for this browser. Your choice is saved on this device.</p><div class="dialog-actions"><button type="button" class="btn outline" data-action="close">Close</button><button type="button" class="btn primary" data-action="analytics-toggle">${analyticsPreferenceLabel()}</button></div>`);
+  const preference = analyticsPreference();
+  const status = preference === 'granted' ? 'Analytics cookies are allowed in this browser.' : preference === 'denied' ? 'Visitor analytics is disabled in this browser.' : 'Cookie-free analytics is active. Allow cookies to help us measure visitors and sessions more accurately.';
+  dialog(`<div class="eyebrow">YOUR PRIVACY</div><h2>Visitor analytics</h2><p>Google Analytics measures visits and registrations. Microsoft Clarity records clicks and scrolling to help improve the site. Allowing analytics cookies helps these tools recognise visits across pages. Player details are masked in replays.</p><p>${status} Your choice is saved on this device and can be changed here at any time.</p><div class="dialog-actions analytics-dialog-actions">${preference !== 'cookieless' ? '<button type="button" class="btn outline" data-action="close">Close</button>' : ''}${preference !== 'denied' ? '<button type="button" class="btn outline" data-action="analytics-deny">Disable visitor analytics</button>' : ''}${preference !== 'granted' ? '<button type="button" class="btn primary" data-action="analytics-allow">Allow analytics cookies</button>' : ''}</div>`);
   modal.setAttribute('aria-label', 'Visitor analytics');
 }
 function assignDialog(matchId, boardId) {
@@ -651,7 +653,12 @@ document.addEventListener('click', async event => {
   try {
     if (action === 'close') return modal.close();
     if (action === 'analytics-settings') return analyticsSettingsDialog();
-    if (action === 'analytics-toggle') { b.textContent = toggleAnalytics(); return; }
+    if (action === 'analytics-allow' || action === 'analytics-deny') {
+      setAnalyticsPreference(action === 'analytics-allow' ? 'granted' : 'denied');
+      analyticsSettingsDialog();
+      modal.querySelector('[data-action="close"]').focus();
+      return;
+    }
     if (action === 'retry') return sync();
     if (action === 'menu') return setMenu(!menuOpen);
     if (action === 'account') return accountDialog();
