@@ -19,7 +19,7 @@ export const timeline = [
 ];
 
 export const massTimes = ['8:30 AM'];
-export const massVenue = 'St Claret’s Hall, Mary Matha Church, Vijayanagar';
+export const massVenue = 'Mary Matha Church, Vijayanagar';
 
 export const venueAddress = '24, Church Service Road, Sri Krishnadevaraya Rd, Hoshalli Extension, Stage 1, Vijayanagar, Bengaluru, Karnataka 560040';
 
