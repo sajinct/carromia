@@ -41,8 +41,8 @@ test('API protects the desk, persists registration, produces QR, and omits priva
   const qr = await (await fetch(`${base}/api/qr?token=${team.checkinToken}`)).json(); assert.match(qr.qr, /^data:image\/png;base64,/);
   const results = await (await fetch(`${base}/api/link-qr?route=/results`)).json(); assert.match(results.qr, /^data:image\/png;base64,/); assert.match(results.url, /\/results$/);
   assert.equal((await fetch(`${base}/api/link-qr?route=/admin`)).status, 404, 'only public pages get a QR code');
-  for (const amount of ['300.00', '900.00', '1250.50']) {
-    const uri = `upi://pay?pa=parish@okaxis&pn=CARROMIA2026&am=${amount}&cu=INR`;
+  for (const [amount, extra] of [['300.00', ''], ['900.00', '&mc=8661&tr=CARMG2K9X1AB12C'], ['1250.50', '']]) {
+    const uri = `upi://pay?pa=parish@okaxis&pn=${amount === '300.00' ? 'CARROMIA2026' : 'MARY%20MATHA%20CHURCH%20TRUST'}${extra}&am=${amount}&cu=INR`;
     const payment = await (await fetch(`${base}/api/upi-payment-qr?uri=${encodeURIComponent(uri)}`)).json();
     assert.equal(payment.qr, await QRCode.toDataURL(uri, { width: 440, margin: 4, color: { dark: '#000000', light: '#ffffff' } }), 'QR encodes the exact payment destination and amount');
   }
