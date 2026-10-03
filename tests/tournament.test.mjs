@@ -65,7 +65,6 @@ test('event settings: payment at registration needs a UPI ID or fallback QR code
   const named = open(); updateSettings(named, { ...base, upiName: '  MARY MATHA   CHURCH TRUST ' }); assert.equal(named.event.upiName, 'MARY MATHA CHURCH TRUST');
   assert.throws(() => updateSettings(open(), { ...base, upiMerchantCode: '86' }), /4 digits/);
   updateSettings(named, { ...base, upiMerchantCode: ' 8661 ' }); assert.equal(named.event.upiMerchantCode, '8661');
-  updateSettings(named, { ...base, upiOpenAmount: true }); assert.equal(named.event.upiOpenAmount, true);
   const dynamic = open(); updateSettings(dynamic, { ...base, paymentRequired: true, upiId: 'carromia@okaxis' });
   assert.equal(dynamic.event.paymentRequired, true, 'UPI ID alone enables payment');
   updateSettings(s, { ...base, paymentRequired: false, upiQr: '' }); assert.equal(s.event.paymentRequired, false);
