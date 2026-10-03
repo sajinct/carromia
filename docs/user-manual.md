@@ -385,6 +385,7 @@ Press **Save settings** at the bottom.
 3. Optionally enter the **UPI ID**, such as `name@bank`. This adds the **Pay with a UPI app** button on phones.
    Optionally enter the **UPI payee name**, such as `MARY MATHA CHURCH TRUST`. It is the name the UPI app shows when paying; left blank, the event name and year are used.
    Enter a **Merchant category code** only if the UPI ID is a merchant account your bank has onboarded for UPI payments (the bank gives you the 4-digit code). Payments then also carry the merchant category and a transaction reference for each registration. Leave it blank for a personal or trust savings UPI ID, or UPI apps may decline the payment.
+   Tick **Hide the Pay with a UPI app button** if UPI apps decline payments started from it. Teams then pay by scanning the QR code or copying the UPI ID.
 4. **Save settings.** New registrations are then *pending* until an official confirms the payment ([7.1](#71-teams-payments-and-forms)).
 
 **Lunch coupons:** tick **Print lunch coupons on the registration form and scan them at the lunch counter**. Each booked lunch gets a tear-off coupon with a QR code, and each coupon can be served once. Turn this on **before** teams download their forms.
