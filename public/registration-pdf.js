@@ -3,7 +3,7 @@
 // PDF again from the saved team. jsPDF is passed in (the browser loads it only when needed).
 // When the event has lunch coupons on, page 1 is set a little tighter and ends with a tear-off
 // coupon for each lunch the team booked, carrying the QR code the lunch counter scans.
-import { prizes, timeline, documents, goodToKnow, ruleSections, formatText } from './info.js';
+import { prizes, timeline, documents, goodToKnow, ruleSections, formatText, supportContacts } from './info.js';
 
 const green = [25, 62, 53], lime = [222, 237, 185], ink = [36, 51, 46], muted = [110, 118, 108], line = [210, 216, 204], soft = [243, 246, 238];
 const W = 210, H = 297, M = 16, bottom = H - 18;
@@ -92,8 +92,13 @@ export function registrationPdf(jsPDF, { team, event, qr = '', lunchQr = '', pho
   const feeLine = `Lunch booked: ${team.lunch ? `${team.lunch === 2 ? 'both players' : '1 player'}` : 'none'}${forTeams ? '   |   ' : '     |     '}Entry fee: ${paid}`;
   for (let size = 8.5; size > 6.5 && doc.getTextWidth(feeLine) > W - 2 * M; size -= 0.25) font(size - 0.25, 'normal');
   text(feeLine, M, y);
-  const contacts = (event.contacts || []).map(c => `${c.name} ${c.phone}`).join('   |   ');
-  if (contacts) { y += 4.8; font(8.5, 'normal', muted); text(`For queries: ${contacts}`, M, y); }
+  const contacts = supportContacts(event).map(c => `${c.name} ${c.phone}`).join('   |   ');
+  if (contacts) {
+    y += 4.8; font(8.5, 'normal', muted);
+    const contactLine = `For queries: ${contacts}`;
+    for (let size = 8.5; size > 6.5 && doc.getTextWidth(contactLine) > W - 2 * M; size -= 0.25) font(size - 0.25, 'normal', muted);
+    text(contactLine, M, y, { maxWidth: W - 2 * M });
+  }
 
   // Declaration.
   y += tight ? 6.5 : 7.5; y = heading('Declaration by the players', y);

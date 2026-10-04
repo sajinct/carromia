@@ -254,6 +254,12 @@ a.ph-info-link:hover strong,.ph-info>a:hover strong{text-decoration:underline;te
 .upi-setting>div{flex:1}
 .settings-subhead{margin-top:26px;padding-top:20px;border-top:1px solid var(--line)}
 .support-card ul{grid-column:2;list-style:none;padding:0;margin:0;display:grid;gap:12px;font-size:14px;line-height:1.5}
+.support-card .contact-description{grid-column:2;margin:0;color:var(--muted);font-size:13px;line-height:1.6}
+.event-contacts{padding:36px 0;border-top:1px solid var(--line)}
+.event-contacts h2{margin:10px 0 20px;font-size:32px;letter-spacing:-1px}
+.event-contact-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:20px;align-items:start}
+.event-contact-grid .support-card{margin:0}
+@media(max-width:680px){.event-contact-grid{grid-template-columns:1fr}.event-contacts h2{font-size:29px}}
 .support-card li{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 12px;align-items:center}
 .support-card li span{grid-column:1/-1;min-width:0;font-weight:600;overflow-wrap:anywhere}
 .support-card a{display:inline-flex;align-items:center;min-height:44px;min-width:0;color:var(--green-2);text-decoration:underline;text-underline-offset:2px;overflow-wrap:anywhere}

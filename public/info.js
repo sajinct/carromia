@@ -3,10 +3,30 @@
 // (Tournament desk → Event settings); everything else about the event is edited here.
 
 export const prizes = [
-  { place: '1st prize', amount: 10001 },
-  { place: '2nd prize', amount: 5001 },
-  { place: '3rd prize', amount: 3001 }
+  { place: '1st prize', amount: 15001 },
+  { place: '2nd prize', amount: 10001 },
+  { place: '3rd prize', amount: 5001 }
 ];
+
+export const registrationContacts = [
+  { name: 'Sajin CT', phone: '9605551004' },
+  { name: 'Windoor Thomas', phone: '9845712799' },
+  { name: 'Febin', phone: '8129966736' }
+];
+
+// Add the two remaining program coordinators here when their details are available.
+export const programCoordinators = [
+  { name: 'MC George', phone: '9620753153' }
+];
+
+// The original published support list used the same placeholder phone for all three people.
+// Replace that legacy list without requiring a database update; later Settings edits still apply.
+const legacyContactNames = ['Mr. K.J.Paul', 'Mr.Shaji Antony', 'Mr.K.J.Sebastian'];
+export function supportContacts(event) {
+  const contacts = event.contacts || [];
+  const legacy = contacts.length === legacyContactNames.length && contacts.every((c, i) => c.name === legacyContactNames[i] && c.phone === '9605551004');
+  return contacts.length && !legacy ? contacts : registrationContacts;
+}
 
 export const timeline = [
   ['10:00 AM', 'Registration'],
