@@ -1,5 +1,5 @@
 import { pagesMode, remoteApi, watch } from './runtime.js';
-import { prizes, timeline, massTimes, massVenue, venueAddress, about, documents, goodToKnow, ruleSections, matchFormat, formatText, programCoordinators, supportContacts } from './info.js';
+import { prizes, timeline, massTimes, massVenue, venueAddress, venueMapsUrl, about, documents, goodToKnow, ruleSections, matchFormat, formatText, programCoordinators, supportContacts } from './info.js';
 import { groups, centres, centreTypes, idTypes } from './parishes.js';
 import { registrationPdf, groupRegistrationPdf } from './registration-pdf.js';
 import { analyticsEnabled, analyticsPreference, setAnalyticsPreference, beforeAnalyticsNavigation, updateAnalytics, trackAnalyticsEvent } from './analytics.js';
@@ -152,7 +152,7 @@ function publicMenu() {
 }
 function footer() { return `<footer><span>© ${esc(state.event.year)} CARROMIA · Hosted by Mary Matha Church, Vijayanagar · Diocese of Mandya</span><nav class="footer-links" aria-label="Footer navigation"><a href="/live">${icon('screen')} Live boards</a><a class="footer-desk" href="/admin">${icon('shield')} Tournament desk</a>${analyticsEnabled() ? `<button type="button" class="analytics-preferences" data-action="analytics-settings" aria-haspopup="dialog" aria-controls="modal">${icon('settings')} Visitor analytics</button>` : ''}</nav><span class="footer-hosts">${hosts.map(h => `<a href="${h.href}" target="_blank" rel="noopener" title="${esc(h.name)}"><img src="${h.img}" alt="${esc(h.alt)}" width="26" height="26"></a>`).join('')}</span></footer>`; }
 function home() {
-  const closed = state.demo || !state.registration.open, e = state.event, maps = `https://www.google.com/maps/search/?api=1&amp;query=${encodeURIComponent(state.event.venue)}`;
+  const closed = state.demo || !state.registration.open, e = state.event, maps = esc(venueMapsUrl);
   return `<div class="public-wrap">${publicHeader()}<main><section class="poster-hero" aria-labelledby="event-title">
   <div class="ph-copy">
     <div class="event-edition"><span class="edition-dot"></span> THE DIOCESE-WIDE CARROM TOURNAMENT</div>
