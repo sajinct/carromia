@@ -4,7 +4,7 @@ import { join, extname } from 'node:path';
 import { randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
 import QRCode from 'qrcode';
 import { fileStore, supabaseStore, ConflictError } from './lib/store.mjs';
-import { emptyState, addTeams, playerPhotos, paymentProof, teamForm, groupForm, publicTeam, eligible, fail, actions, refusal, checkBoard, teamsFor, fileRoles, registrationStatus, defaults, shareRoutes, teamFiles, thumbPath, teamFilePath, assetPath, upiQrImage, maxGroupTeams, maxPhotoLength, maxThumbLength, maxScreenshotLength } from './lib/tournament.mjs';
+import { emptyState, addTeams, playerPhotos, paymentProof, teamForm, groupForm, publicTeam, publicState, eligible, fail, actions, refusal, checkBoard, teamsFor, fileRoles, registrationStatus, defaults, shareRoutes, teamFiles, thumbPath, teamFilePath, assetPath, upiQrImage, maxGroupTeams, maxPhotoLength, maxThumbLength, maxScreenshotLength } from './lib/tournament.mjs';
 
 const port = Number(process.env.PORT || 3000);
 const host = process.env.HOST || '127.0.0.1';
@@ -42,7 +42,7 @@ function send(res, status, value) { res.writeHead(status, { 'Content-Type': 'app
 async function body(req, limit = 20000) { let text = ''; for await (const chunk of req) { text += chunk; if (text.length > limit) throw new Error('Request too large.'); } return JSON.parse(text || '{}'); }
 function view(user) {
   const isAdmin = Boolean(user);
-  return { ...state, event: { ...defaults, ...state.event }, teams: isAdmin ? teamsFor(state.teams, user.role) : state.teams.map(publicTeam), activity: isAdmin ? state.activity : [], matches: state.matches.map(m => ({ ...m, blockedReason: eligible(state, m) })), registration: registrationStatus(state), isAdmin, user: user && { name: user.name, role: user.role, boards: user.boards || [] }, authMode: supabase ? 'supabase' : 'password', localDemo: !supabase && !process.env.ADMIN_PASSWORD, serverTime: Date.now() };
+  return { ...(isAdmin ? state : publicState(state)), event: { ...defaults, ...state.event }, teams: isAdmin ? teamsFor(state.teams, user.role) : state.teams.map(publicTeam), activity: isAdmin ? state.activity : [], matches: state.matches.map(m => ({ ...m, blockedReason: eligible(state, m) })), registration: registrationStatus(state), isAdmin, user: user && { name: user.name, role: user.role, boards: user.boards || [] }, authMode: supabase ? 'supabase' : 'password', localDemo: !supabase && !process.env.ADMIN_PASSWORD, serverTime: Date.now() };
 }
 // Pictures arrive as data URLs and are stored as files; the desk reads them through /api/files.
 // A team's QR code: the check-in desk's, or the lunch counter's on its lunch coupons.
@@ -58,7 +58,7 @@ async function sendFile(res, bucket, path, cache) {
 const types = { '.html': 'text/html', '.css': 'text/css', '.js': 'text/javascript', '.svg': 'image/svg+xml', '.webmanifest': 'application/manifest+json', '.png': 'image/png', '.webp': 'image/webp' };
 const server = http.createServer(async (req, res) => {
   res.setHeader('X-Content-Type-Options', 'nosniff'); res.setHeader('Referrer-Policy', 'no-referrer');
-  res.setHeader('Content-Security-Policy', "default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'");
+  res.setHeader('Content-Security-Policy', "default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; connect-src 'self'; frame-src https://www.youtube-nocookie.com https://www.facebook.com https://www.instagram.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self'");
   const url = new URL(req.url, 'http://localhost');
   try {
     if (url.pathname === '/api/events' && req.method === 'GET') {

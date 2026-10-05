@@ -173,3 +173,14 @@ Tests cover bracket completion for every team count from 2–128, byes, registra
 This release is a local functional prototype. Production setup remains: HTTPS hosting, abuse protection beyond the basic per-connection registration limit (30 per 10 minutes), and backup/restore operations. Supabase storage and named officials are available (see above); desk sign-ins are held in server memory, so a restart signs officials out. It does not support concurrent server instances or draw editing; a result can be corrected only until the winner’s next match is called.
 
 The entry fee is shown but not collected or tracked by the app. The rules page and home page describe the published rules (best of three games, 10 minutes each); if the committee changes them, update `public/info.js` as well as the rounds settings.
+
+
+## Board streams and social gallery
+
+Run `supabase/migrations/20261011000000_carromia_media.sql` after the staff-roles migration, then build and deploy the updated site. The migration protects media changes by role and excludes pending/rejected links from the public database copy. The local server needs no migration.
+
+In the desk, admins open **Streams & gallery**. Enable board streams, paste a specific YouTube or Facebook broadcast URL for each board, tick **Show this stream**, and save. Match links override board links only while that match occupies a board. A disabled match override hides its stream; removing it restores the board link. Global disable or missing links keeps the existing board display. Score updates preserve unchanged iframe players. Streaming cameras and broadcasting remain in the social platform's app.
+
+Instagram live links open the broadcast on Instagram; they are not treated as embeddable live players. Every embed includes an original-source link for private, deleted, restricted or unavailable content. Use public posts and broadcasts that permit embedding.
+
+For the photo/video wall, enable the gallery and add public YouTube, Facebook or Instagram post links with a title and media type. New items are **pending**. Review the original, then **Approve** to publish at `/gallery` (`#/gallery` on Pages), **Hide / pending** to unpublish, **Reject**, or **Remove**. The gallery is linked in public navigation while enabled. This is a manually curated wall, not automatic social account ingestion. Media stays hosted by the original platform. Links and approvals sync with the existing event updates and stay separate in practice mode. Starting a fresh event clears media links with the tournament data.

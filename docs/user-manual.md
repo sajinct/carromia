@@ -857,3 +857,16 @@ The full technical steps are in the project's [README](../README.md). In short:
 **Official:** confirm payments → WhatsApp the forms → check in → **Assign** matches to free boards → run the boards → watch the queue labels.
 
 **Admin:** settings → officials → rehearse → check the team list → **Create knockout draw** → walkovers and corrections as needed → export results → download a backup.
+
+
+## Streams & gallery (event admins)
+
+Open **Streams & gallery** in the desk menu (on phones, under More options). Both displays start disabled.
+
+1. To show broadcasts beside board scores, tick **Show board streams on Live boards** and save. Add a specific YouTube or Facebook broadcast link to each board, tick **Show this stream**, and save that board. The link stays with the board as matches change. A match stream overrides the board stream while that match is called or playing; unticking its visibility hides the stream for that match, and removing its link restores the board stream. Missing links leave a board as usual.
+2. Broadcast from the platform's app or your streaming equipment. The tournament site displays the broadcast; it does not start or upload it. Instagram live links open externally. Use public content with embedding allowed; viewers can use **Open stream** if a player cannot load.
+3. Enable the **public photo & video wall** and save. Add a public social post/video URL, title and type under **Add a gallery link**. It enters the review list as **pending**.
+4. Use **Review original** to check the content. **Approve** publishes it on Gallery. **Hide / pending** or **Reject** removes it from public view; **Remove** deletes the saved link. Visitors never receive pending or rejected links.
+5. Preview Live boards or Gallery using the links at the top. Global switches hide the displays without deleting saved links. Changes update other devices automatically. Practice mode has its own media links; a fresh event clears them.
+
+The public Gallery appears in navigation when enabled. It contains only links added and approved by admins; it does not automatically import everything from social accounts.

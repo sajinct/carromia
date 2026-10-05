@@ -160,3 +160,22 @@ test('live connections are capped', async t => {
   assert.equal((await fetch(`${base}/api/events`, { signal: controller.signal })).status, 200);
   assert.equal((await fetch(`${base}/api/events`)).status, 503);
 });
+
+
+test('API persists optional streams and publishes only approved gallery links', async t => {
+  const { base, post, login } = await serve(t, 3094), cookie = await login();
+  assert.equal((await post('media', { operation: 'settings', streamsEnabled: true })).status, 401);
+  assert.equal((await post('media', { operation: 'settings', streamsEnabled: true, galleryEnabled: true }, cookie)).status, 200);
+  assert.equal((await post('media', { operation: 'stream', boardId: 1, enabled: true, url: 'https://youtu.be/M7lc1UVf-VE' }, cookie)).status, 200);
+  assert.equal((await post('media', { operation: 'add', url: 'https://instagram.com/p/ABC123/', title: 'Event photo', kind: 'photo' }, cookie)).status, 200);
+  let pub = await (await fetch(`${base}/api/state`)).json();
+  assert.equal(pub.media.streams.length, 1); assert.equal(pub.media.gallery.length, 0);
+  const desk = await (await fetch(`${base}/api/state`, { headers: { Cookie: cookie } })).json(), id = desk.media.gallery[0].id;
+  assert.equal((await post('media', { operation: 'review', id, status: 'approved' }, cookie)).status, 200);
+  pub = await (await fetch(`${base}/api/state`)).json(); assert.equal(pub.media.gallery[0].title, 'Event photo');
+  assert.equal((await post('media', { operation: 'review', id, status: 'pending' }, cookie)).status, 200);
+  pub = await (await fetch(`${base}/api/state`)).json(); assert.equal(pub.media.gallery.length, 0);
+  const res = await fetch(`${base}/gallery`);
+  assert.equal(res.status, 200); assert.match(res.headers.get('content-security-policy'), /frame-src https:\/\/www.youtube-nocookie.com/);
+  assert.equal((await post('media', { operation: 'stream', boardId: 2, url: 'https://malicious.example' }, cookie)).status, 400);
+});

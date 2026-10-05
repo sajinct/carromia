@@ -316,8 +316,8 @@ test('a recorded score can be corrected round by round until the next round is c
   assert.throws(() => correctResult(s, 'M99', {}), /Only a played/);
 });
 test('the action registry names every desk action and flags the admin-only ones', () => {
-  assert.deepEqual(Object.keys(actions).sort(), ['assign', 'board-ready', 'checkin', 'confirm-payment', 'correct-result', 'demo', 'draw', 'next-round', 'practice-mode', 'remove-team', 'reset', 'round-winner', 'serve-lunch', 'settings', 'start', 'unassign', 'undo-round', 'undo-walkover', 'walkover']);
-  assert.deepEqual(Object.entries(actions).filter(([, a]) => a.admin).map(([k]) => k).sort(), ['correct-result', 'demo', 'draw', 'practice-mode', 'remove-team', 'reset', 'settings', 'undo-walkover', 'walkover']);
+  assert.deepEqual(Object.keys(actions).sort(), ['assign', 'board-ready', 'checkin', 'confirm-payment', 'correct-result', 'demo', 'draw', 'media', 'next-round', 'practice-mode', 'remove-team', 'reset', 'round-winner', 'serve-lunch', 'settings', 'start', 'unassign', 'undo-round', 'undo-walkover', 'walkover']);
+  assert.deepEqual(Object.entries(actions).filter(([, a]) => a.admin).map(([k]) => k).sort(), ['correct-result', 'demo', 'draw', 'media', 'practice-mode', 'remove-team', 'reset', 'settings', 'undo-walkover', 'walkover']);
   const s = setup(2); actions.draw.run(s, {}, {}); actions.assign.run(s, { id: 'M01', board: 1 }, { now: 0 }); actions.start.run(s, { id: 'M01' }, { now: 0 });
   const m = s.matches[0]; actions['round-winner'].run(s, { id: 'M01', winner: m.teamA }, { now: 60000, official: 'Asha Admin' }); actions['undo-round'].run(s, { id: 'M01' }, { now: 70000 });
   actions['round-winner'].run(s, { id: 'M01', winner: m.teamA }, { now: 80000 }); actions['next-round'].run(s, { id: 'M01' }, { now: 90000 }); assert.equal(m.rounds[1].startedAt, 90000);

@@ -382,3 +382,25 @@ test('live Pages runtime: a screen stops checking as soon as the database confir
   socket.announce('main', { version: 6, practiceOff: false });
   assert.equal(screen.changes, 2);
 });
+
+
+test('Pages runtime syncs streams and gallery approvals and rejects official media edits', async t => {
+  const db = fakeSupabase(), memory = new Map(), realFetch = globalThis.fetch;
+  globalThis.localStorage = { getItem: key => memory.get(key) ?? null, setItem: (key, value) => memory.set(key, value), removeItem: key => memory.delete(key) };
+  globalThis.fetch = db.fetch; globalThis.location = { origin: 'https://sajinct.github.io', pathname: '/carromia/', search: '' };
+  t.after(() => { globalThis.fetch = realFetch; delete globalThis.localStorage; delete globalThis.location; });
+  const { remoteApi } = await import('../dist/runtime.js');
+  await remoteApi('login', { email: 'omar@example.org', password: 'official-pass' });
+  await assert.rejects(remoteApi('media', { operation: 'settings', streamsEnabled: true }), /Only an event admin/);
+  await remoteApi('logout'); await remoteApi('login', { email: 'asha@example.org', password: 'admin-pass' });
+  await remoteApi('media', { operation: 'settings', streamsEnabled: true, galleryEnabled: true });
+  await remoteApi('media', { operation: 'stream', boardId: 1, url: 'https://youtu.be/M7lc1UVf-VE', enabled: true });
+  await remoteApi('media', { operation: 'add', url: 'https://instagram.com/p/ABC123/', title: 'Opening day', kind: 'photo' });
+  const id = db.rows.main.state.media.gallery[0].id;
+  assert.equal(db.public.state.media.gallery.length, 0);
+  await remoteApi('media', { operation: 'review', id, status: 'approved' });
+  assert.equal(db.public.state.media.gallery[0].id, id);
+  await remoteApi('logout');
+  const pub = await remoteApi('state'); assert.equal(pub.media.gallery.length, 1); assert.equal(pub.media.streams.length, 1);
+  await assert.rejects(remoteApi('media', { operation: 'review', id, status: 'rejected' }), /Sign in/);
+});
