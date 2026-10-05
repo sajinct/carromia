@@ -16,7 +16,7 @@ export function streamCard(state, boardId, matchId) {
 }
 export function galleryContent(state) {
   const posts = state.media?.galleryEnabled ? (state.media.gallery || []).filter(p => p.status === 'approved') : [];
-  return `<div class="gallery-intro"><div class="eyebrow">THE GAME. THE COMMUNITY.</div><h1>Photo &amp; video wall</h1><p>Moments from CARROMIA, shared on social media and approved by the event team.</p></div>${posts.length ? `<div class="social-gallery">${posts.map(p => `<article class="panel gallery-item"><span class="badge neutral">${esc(p.kind === 'photo' ? 'Photo' : 'Video')}</span><h2>${esc(p.title)}</h2>${embed(p.url, p.title)}</article>`).join('')}</div>` : '<section class="panel empty"><h2>More moments to come.</h2><p>Approved photos and videos will appear here.</p></section>'}`;
+  return `<div class="gallery-intro"><div class="eyebrow">THE GAME. THE COMMUNITY.</div><h1>Photo &amp; video wall</h1><p>Moments from CARROMIA, shared on social media.</p></div>${posts.length ? `<div class="social-gallery">${posts.map(p => `<article class="panel gallery-item"><span class="badge neutral">${esc(p.kind === 'photo' ? 'Photo' : 'Video')}</span><h2>${esc(p.title)}</h2>${embed(p.url, p.title)}</article>`).join('')}</div>` : '<section class="panel empty"><h2>More moments to come.</h2><p>Approved photos and videos will appear here.</p></section>'}`;
 }
 export function mediaAdmin(state) {
   const media = state.media || {}, streams = media.streams || [], posts = media.gallery || [];
