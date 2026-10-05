@@ -36,6 +36,26 @@ test('board streams default off, match links override boards, and disabled match
   assert.equal(freshEvent(state, 'RESET').media, undefined);
 });
 
+test('live display autoplays muted YouTube and Facebook streams while gallery videos stay manual', () => {
+  const state = seedDemo();
+  updateMedia(state, { operation: 'settings', streamsEnabled: true, galleryEnabled: true });
+  const playerUrl = html => new URL(/src="([^"]+)"/.exec(html)[1].replaceAll('&amp;', '&'));
+  for (const [url, flag] of [[video, '1'], ['https://facebook.com/event/videos/123', 'true']]) {
+    updateMedia(state, { operation: 'stream', boardId: 1, url, enabled: true });
+    const html = streamCard(state, 1, 'M01'), player = playerUrl(html);
+    assert.equal(player.searchParams.get('autoplay'), flag); assert.equal(player.searchParams.get('mute'), flag);
+    assert.match(html, /loading="eager"/); assert.match(html, /allow="autoplay;/);
+    updateMedia(state, { operation: 'add', url, title: 'Highlights', kind: 'video' });
+    updateMedia(state, { operation: 'review', id: state.media.gallery[0].id, status: 'approved' });
+  }
+  const gallery = galleryContent(publicState(state));
+  assert.match(gallery, /loading="lazy"/); assert.doesNotMatch(gallery, /autoplay=(?:1|true)|mute=(?:1|true)/);
+  updateMedia(state, { operation: 'stream', matchId: 'M01', url: video, enabled: true });
+  assert.equal(playerUrl(streamCard(state, 1, 'M01')).searchParams.get('autoplay'), '1');
+  updateMedia(state, { operation: 'settings', streamsEnabled: false, galleryEnabled: true });
+  assert.equal(streamCard(state, 1, 'M01'), '');
+});
+
 test('gallery publishes only approved links and excludes private review data', () => {
   const state = emptyState();
   updateMedia(state, { operation: 'settings', streamsEnabled: true, galleryEnabled: true });

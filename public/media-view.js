@@ -3,7 +3,12 @@ const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;
 
 function embed(url, title, live = false) {
   let link; try { link = socialLink(url, live); } catch { return ''; }
-  return `${link.embed ? `<iframe class="social-embed ${link.shape}" src="${esc(link.embed)}" title="${esc(title)}" loading="lazy" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe>` : '<p class="form-note">Watch this broadcast on Instagram.</p>'}<a class="text-link" href="${esc(link.url)}" target="_blank" rel="noopener noreferrer">${live ? 'Open stream' : 'View original'} on ${link.platform} ↗</a>${link.embed ? '<p class="form-note">If the player is unavailable, open the original link.</p>' : ''}`;
+  if (live && link.embed) {
+    const player = new URL(link.embed), flag = link.platform === 'Facebook' ? 'true' : '1';
+    player.searchParams.set('autoplay', flag); player.searchParams.set('mute', flag);
+    link.embed = player.href;
+  }
+  return `${link.embed ? `<iframe class="social-embed ${link.shape}" src="${esc(link.embed)}" title="${esc(title)}" loading="${live ? 'eager' : 'lazy'}" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe>` : '<p class="form-note">Watch this broadcast on Instagram.</p>'}<a class="text-link" href="${esc(link.url)}" target="_blank" rel="noopener noreferrer">${live ? 'Open stream' : 'View original'} on ${link.platform} ↗</a>${link.embed ? `<p class="form-note">${live ? 'Starts automatically, muted. Use the player controls for sound or press Play if autoplay is blocked. ' : ''}If the player is unavailable, open the original link.</p>` : ''}`;
 }
 export function streamCard(state, boardId, matchId) {
   const stream = boardStream(state, boardId, matchId);
