@@ -162,7 +162,7 @@ test('lunch coupons: off by default; the counter serves each booked lunch once, 
   assert.throws(() => serveLunch(s, { id: p.id }), /hasn’t been confirmed/);
 });
 test('registration limits: team slots, teams per parish, deadline and lunch booking', () => {
-  const s = emptyState(), before = Date.parse('2026-11-10T18:29:00Z'), after = Date.parse('2026-11-10T18:30:00Z');
+  const s = emptyState(), before = Date.parse('2026-11-10T15:29:59.999Z'), after = Date.parse('2026-11-10T15:30:00Z');
   assert.deepEqual([s.event.maxTeams, s.event.maxTeamsPerParish, s.event.registrationDeadline, s.event.entryFee], [64, 4, '2026-11-10', 500]);
   // Spellings of one register entry count as the same parish, and are saved as the register has it.
   for (const parish of ['Dharmaram, St. Thomas Forane Church', 'dharmaram st thomas forane church', 'DHARMARAM, ST. THOMAS FORANE CHURCH.', ' Dharmaram St Thomas Forane Church ']) assert.equal(addTeam(s, { ...entry(`Thomas ${parish}`), forane: 'Dharmaram Forane', parish }, before).parish, 'Dharmaram, St. Thomas Forane Church');
@@ -170,9 +170,9 @@ test('registration limits: team slots, teams per parish, deadline and lunch book
   assert.throws(() => addTeam(s, { ...entry('Fifth'), forane: 'Dharmaram Forane', parish: 'Dharmaram, St. Thomas Forane Church' }, before), /Dharmaram, St\. Thomas Forane Church already has 4 teams registered/);
   assert.equal(addTeam(s, { ...entry('Other', 2), lunch: '2' }, before).lunch, 2);
   assert.deepEqual([addTeam(s, { ...entry('L1', 3), lunch: 9 }, before).lunch, addTeam(s, { ...entry('L2', 4), lunch: -1 }, before).lunch, addTeam(s, entry('L3', 5), before).lunch], [2, 0, 0]);
-  // The deadline is the end of 10 November in India (18:30 UTC); practice events ignore it.
+  // The deadline is 9:00 PM on 10 November in India (15:30 UTC); practice events ignore it.
   assert.deepEqual(registrationStatus(s, before), { open: true, reason: '', slotsLeft: 56, maxTeams: 64 });
-  assert.equal(registrationStatus(s, after).reason, 'Registration closed on 10 November 2026.'); assert.throws(() => addTeam(s, entry('Late', 6), after), /closed on 10 November 2026/);
+  assert.equal(registrationStatus(s, after).reason, 'Registration closed on 10 November 2026 at 9:00 PM IST.'); assert.throws(() => addTeam(s, entry('Late', 6), after), /closed on 10 November 2026/);
   assert.equal(registrationStatus({ ...s, practice: true }, after).open, true);
   s.event.registrationDeadline = ''; assert.equal(registrationStatus(s, after).open, true);
   s.event.maxTeams = 8; assert.equal(registrationStatus(s, before).reason, 'All 8 team slots are taken. Registration is full.'); assert.throws(() => addTeam(s, entry('Ninth', 7), before), /Registration is full/);
@@ -233,7 +233,7 @@ test('a match started before rounds existed carries on from round 1', () => {
 test('winner advances only after both predecessor matches are complete', () => { const s = setup(4); createDraw(s, false); assign(s, 'M01', 1, 0); start(s, 'M01', 0); play(s, 'M01', A_WINS, 600000); assert.equal(s.matches[2].status, 'waiting'); assign(s, 'M02', 2, 0); start(s, 'M02', 0); play(s, 'M02', B_WINS, 600000); assert.equal(s.matches[2].status, 'ready'); assert.equal(s.matches[2].teamA, s.matches[0].winner); assert.equal(s.matches[2].teamB, s.matches[1].winner); });
 test('reset and rest periods block premature scheduling', () => { const s = setup(4); s.event.restMinutes = 10; createDraw(s, false); for (let i = 0; i < 2; i++) { assign(s, s.matches[i].id, i + 1, 1000000); start(s, s.matches[i].id, 1000000); play(s, s.matches[i].id, A_WINS, 1600000); } assert.equal(eligible(s, s.matches[2], 1600000), 'Rest period'); assert.equal(eligible(s, s.matches[2], 2200000), ''); s.event.restMinutes = 0; assert.throws(() => assign(s, 'M03', 1, 1600000), /reset/); assign(s, 'M03', 1, 1900000); assert.equal(s.matches[2].status, 'called'); });
 test('event defaults follow the poster; settings are validated', () => {
-  const s = emptyState(); assert.equal(s.event.date, '2026-11-15'); assert.equal(s.event.startTime, '10:00'); assert.deepEqual([s.event.gamesPerMatch, s.event.gameMinutes], [3, 10]);
+  const s = emptyState(); assert.equal(s.event.date, '2026-11-15'); assert.equal(s.event.startTime, '09:45'); assert.deepEqual([s.event.gamesPerMatch, s.event.gameMinutes], [3, 10]);
   const base = { resetMinutes: 5, restMinutes: 0 };
   for (const startTime of ['9am', '24:00', '09:60']) assert.throws(() => updateSettings(emptyState(), { ...base, startTime }), /start time/);
   updateSettings(s, { ...base, startTime: '14:30', registrationOpen: true }); assert.equal(s.event.startTime, '14:30'); assert.equal(s.event.registrationOpen, true); assert.equal(s.event.maxTeams, 64, 'limits are kept when not sent');

@@ -179,6 +179,15 @@ test('live Pages runtime: public view, official sign-in, roles, conflict retry, 
   await assert.rejects(remoteApi('register', { name: 'Real Team', ...where, players: [players[0], player('Joel', '9222222222', false)], adults }), /photo of each player/);
   const { team } = await remoteApi('register', { name: 'Real Team', ...where, players, lunch: 1, adults });
   assert.equal(team.id, 'CAR-001'); assert.equal(team.forane, where.forane); assert.equal(team.players[0].idLast4, '1234'); assert.equal((await remoteApi('state')).teams.length, 1);
+  // A form opened before the deadline cannot submit after the cutoff; no files are uploaded.
+  db.rows.main.state.event.registrationDeadline = '2000-11-10';
+  db.pub.main.state.event.registrationDeadline = '2000-11-10';
+  const filesBeforeDeadlineCheck = db.files.size;
+  await assert.rejects(remoteApi('register', { name: 'Late Team', ...where, players, adults }), /Registration closed on 10 November 2000 at 9:00 PM IST/);
+  assert.equal(db.files.size, filesBeforeDeadlineCheck);
+  assert.equal(db.rows.main.state.teams.length, 1);
+  db.rows.main.state.event.registrationDeadline = '';
+  db.pub.main.state.event.registrationDeadline = '';
   await assert.rejects(remoteApi('photos'), /Sign in/);
   // Anyone with the primary player's mobile number can download the team's form.
   await assert.rejects(remoteApi('team-form', { id: team.id, mobile: '9222222222' }), /doesn’t match/);

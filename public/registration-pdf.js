@@ -5,6 +5,8 @@
 // coupon for each lunch the team booked, carrying the QR code the lunch counter scans.
 import { prizes, timeline, documents, goodToKnow, ruleSections, formatText, supportContacts } from './info.js';
 
+import { registrationDeadlineText } from './event-deadline.js';
+
 const green = [25, 62, 53], lime = [222, 237, 185], ink = [36, 51, 46], muted = [110, 118, 108], line = [210, 216, 204], soft = [243, 246, 238];
 const W = 210, H = 297, M = 16, bottom = H - 18;
 // The standard PDF fonts cover Western European text; the rupee sign is written as "Rs.".
@@ -48,7 +50,7 @@ export function registrationPdf(jsPDF, { team, event, qr = '', lunchQr = '', pho
 
   let y = 43;
   font(8.5, 'normal', muted);
-  text(`${longDate(event.date)}  |  Reporting time ${event.startTime ? clock(event.startTime) : '10:00 AM'}  |  ${event.venue}`, mid, y, { align: 'center', maxWidth: W - 2 * M });
+  text(`${longDate(event.date)}  |  Reporting time ${event.startTime ? clock(event.startTime) : '9:45 AM'}  |  ${event.venue}`, mid, y, { align: 'center', maxWidth: W - 2 * M });
 
   // Team and check-in QR code.
   y = 48; const qrSize = 38;
@@ -159,7 +161,7 @@ export function registrationPdf(jsPDF, { team, event, qr = '', lunchQr = '', pho
   if (rules) {
     doc.addPage(); y = pageTop('Rule book');
     font(9, 'normal', muted);
-    const intro = doc.splitTextToSize(`CARROMIA ${event.year || ''} is an open doubles, thumbing-game knockout. Every match is ${formatText(event)}.`, W - 2 * M);
+    const intro = doc.splitTextToSize(`CARROMIA ${event.year || ''} is an open doubles, thumbing-game knockout. Every match is ${formatText(event)}. Each round represents one board.`, W - 2 * M);
     text(intro, M, y); y += intro.length * 4 + 4;
     let number = 0;
     for (const section of ruleSections) {
@@ -168,9 +170,9 @@ export function registrationPdf(jsPDF, { team, event, qr = '', lunchQr = '', pho
     }
     const list = (title, lines, marker = i => `${i + 1}.`) => { need(14); y = heading(title, y + 4) + 1; lines.forEach((line, i) => { y = numbered(marker(i), line, y); }); };
     list('Bring for registration verification', documents);
-    list('Good to know', [`Entry fee is ${money(event.entryFee ?? 500)} per team.`, ...(event.registrationDeadline ? [`Last date for registration is ${longDate(event.registrationDeadline)}.`] : []), `Up to ${event.maxTeamsPerParish ?? 4} teams can register from one parish.`, ...goodToKnow], () => '-');
+    list('Good to know', [`Entry fee is ${money(event.entryFee ?? 500)} per team.`, ...(event.registrationDeadline ? [`Last date for registration is ${registrationDeadlineText(event, { day: 'numeric', month: 'long', year: 'numeric' })}.`] : []), `A maximum of ${event.maxTeams ?? 64} teams will be accepted on a first-come, first-served basis. A slot is confirmed after registration and the entry fee are received.`, `Up to ${event.maxTeamsPerParish ?? 4} teams can register from one parish.`, ...goodToKnow], () => '-');
     list('The day', timeline.map(([at, what]) => `${at}   ${what}`), () => '-');
-    list('Prizes', prizes.map(p => `${p.place}: ${money(p.amount)} and a trophy`), () => '-');
+    list('Prizes', prizes.map(p => `${p.place}: ${money(p.amount)} per team and a trophy`), () => '-');
   }
 
   // Footer on every page this call added, numbered within them. rulesLabel names a rule book

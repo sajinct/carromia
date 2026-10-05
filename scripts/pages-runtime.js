@@ -191,6 +191,12 @@ export async function remoteApi(path, input = {}) {
   }
   if (path === 'logout') { const token = readSession()?.access_token; writeSession(null); if (token) request('/auth/v1/logout', { method: 'POST', token }).catch(() => {}); return { ok: true }; }
   if (path === 'register') {
+    // Recheck the current event and server-synced time when a form is submitted, even if it
+    // was opened before the cutoff. The hosted registration RPC also enforces the deadline.
+    const { state, id } = await load(null);
+    fail(state.demo, 'Registration will open soon. Please check back.');
+    const status = registrationStatus({ ...state, practice: id === 'practice' }, now());
+    fail(!status.open, status.reason);
     // One team, or several from one parish paid for together (input.teams).
     const teams = Array.isArray(input.teams) ? input.teams : [input];
     // The database checks the rest; the forane / parish pair is checked against the register here.

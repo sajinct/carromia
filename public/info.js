@@ -1,4 +1,4 @@
-// Published event information and rules, as announced on the tournament poster.
+// Published event information and revised tournament rules.
 // Entry fee, team slots, teams per parish and the registration deadline are event settings
 // (Tournament desk → Event settings); everything else about the event is edited here.
 
@@ -29,7 +29,8 @@ export function supportContacts(event) {
 }
 
 export const timeline = [
-  ['10:00 AM', 'Registration'],
+  ['09:45 AM', 'Participant reporting and check-in'],
+  ['10:30 AM', 'Registration desk closes'],
   ['10:30 AM', 'Inauguration ceremony'],
   ['11:00 AM', 'Matches start'],
   ['01:30 PM', 'Lunch break'],
@@ -54,47 +55,51 @@ export const documents = [
 ];
 
 export const goodToKnow = [
-  'Registration is between 10:00 AM and 10:30 AM.',
-  'Water and snacks are provided for participants only.',
-  'Lunch is available to participants who pre-book it in the online registration form.',
+  'Both players must report at 9:45 AM. The registration desk closes at 10:30 AM; late teams may forfeit their slot.',
+  'The inauguration begins at 10:30 AM, followed by the announcement of fixtures. Matches begin at 11:00 AM.',
+  'The entry fee includes water and refreshments for both registered players; these are provided to participants only.',
+  'Lunch is included for participants who pre-book it during registration. Select zero, one or two lunches per team.',
+  'Booked lunches have food coupons on the downloadable registration form. Present the coupons when collecting lunch.',
+  'Both players must be present at their allotted board when their match is called; absence may result in a walkover.',
   'The tournament desk may refuse check-in if a player, their ID proof or the attested form does not match the registration.'
 ];
 
-// Rules are numbered across the sections, as on the poster, with rule 16 added on marking each game
-// on the app (the poster's rule 16 is now 17).
+// Each timed round on the tournament app represents one board. Tie-breaks decide that board,
+// and boards won decide the match; no carrom point scoring is used in this event.
 export const ruleSections = [
   { title: 'General format & tournament structure', rules: [
-    'All India Carrom Federation (AICF) standards.',
-    'Thumbing game only.',
-    'Only doubles (2 players) game.',
-    'Best of three (3) games format (must win 2 games). Anticlockwise rotation of players after each game.',
-    'Knockout basis only.'
+    'The tournament follows the All India Carrom Federation (AICF) Laws of Carrom, except for the specific tournament modifications stated below.',
+    'This is a thumbing-only tournament. All strokes must be played using the thumb.',
+    'Each team consists of two registered players. Four players participate in each match, with partners seated opposite each other.',
+    'Each match is the best of three boards. The first team to win two boards wins the match. Each timed round on the tournament app represents one board. Players move anticlockwise to the next right-hand seating position after each board.',
+    'The tournament follows a knockout format. A third-place playoff will be held between the two teams that lose in the semifinals.'
   ] },
   { title: 'Time limit & match completion', rules: [
-    'Players will be provided 30 minutes to complete 3 games (10 minutes each).',
-    'Matches are to be completed within 30 minutes (3 games); otherwise the match will be decided on the least coins on the board (black or white). No points are considered. The red (Queen) is pocketed only to complete the game.'
+    'Each board has a maximum playing time of 10 minutes, giving a maximum of 30 minutes of regular playing time per match. Setup, seating changes, umpire-authorized stoppages and tie-breaks are additional to regular playing time. The third board is played only if required.',
+    'At the end of 10 minutes, the umpire stops play after any stroke already taken has been completed and applicable penalties resolved. If the board is unfinished, the team with fewer assigned pieces remaining wins that board. The Queen is excluded from this count, and an uncovered Queen does not prevent a timeout win. Equal counts are resolved by Golden Pocket and, if required, sudden death. No point scoring is used; boards won determine the match winner.'
   ] },
   { title: 'Striker, board & pieces', rules: [
-    'Strikers will be provided by the organisers. Bringing or using outside strikers is strictly prohibited.',
-    'The board and pieces: the board features 9 white pieces, 9 black pieces and 1 red Queen piece, set up in a precise, tight hexagon pattern at the centre.'
+    'Organizers provide the strikers. Personal strikers are not permitted.',
+    'Each board uses nine white pieces, nine black pieces and one red Queen. The pieces are arranged in the prescribed opening formation, with the Queen at the centre.'
   ] },
   { title: 'The break', rules: [
-    'Players flip a coin or guess a hidden piece to see who goes first. The first player aims to pocket the white pieces, or chooses a side to be seated, to begin the match.'
+    'The umpire conducts the toss before each match. The winning team chooses either the opening break or its seating side; the other team receives the remaining choice. The team taking the break plays white for that board. The opening break alternates between teams on successive boards.'
   ] },
-  { title: 'Queen & winning the game', rules: [
-    'The Queen: the red Queen can be pocketed at any time once you have started sinking your pieces, but it must be “covered” by pocketing one of your own carrom pieces on the very next shot.',
-    'Winning the match: the first person or team to pocket all of their assigned carrom pieces, along with a covered Queen, wins the board or game.'
+  { title: 'Queen & winning a board', rules: [
+    'The Queen must be pocketed and covered in accordance with the applicable AICF rules. Covering may occur in the same stroke or the immediately following stroke, subject to the opening and eligibility provisions. An uncovered Queen is returned to the board by the umpire.',
+    'Subject to applicable fouls and penalties, the team that legally pockets all nine of its assigned pieces first wins the board, provided the Queen has been properly pocketed and covered by either team. Pocketing the last assigned piece while the Queen remains on the board results in loss of the board.'
   ] },
-  { title: 'Draw / tie & qualification', rules: [
-    'If the match is a draw or a tie between the teams, each team will get 3 coins to pocket (Golden Pocket). The team that pockets the most will qualify for the next round.',
-    'If the Golden Pocket (rule 13) is also a draw, the match goes to sudden death: the teams toss a coin for the first chance to pocket a coin, and the team that pockets first will qualify for the next round.'
+  { title: 'Golden Pocket & sudden death', rules: [
+    'If an unfinished board is tied at the time limit, each team receives three attempts to pocket three pieces, one attempt per piece. Corresponding attempts use identical piece and striker positions, prescribed by the umpires and announced before the tournament. Partners take alternate attempts. A foul counts as an unsuccessful attempt. After both teams complete their three attempts, the team with more successful pockets wins the board.',
+    'If Golden Pocket remains tied, each team receives one attempt per sudden-death round from identical prescribed positions. A toss determines shooting order. Both teams must complete their attempt before a result is decided. A team wins the board when it pockets its piece and the other team misses or commits a foul. If both succeed or both fail, another round is played. Partners continue alternating attempts.'
   ] },
-  { title: 'Umpire decision', rules: [
-    'The umpire’s decision will be final (KSCA umpires only).',
-    'The umpire decides each game, including when its time runs out, and an official marks the winning team on the tournament app. The next game begins when the official starts it.'
+  { title: 'Umpires & decisions', rules: [
+    'Matches are officiated by Karnataka State Carrom Association (KSCA) umpires. The umpire’s decision governs play. Any dispute must be referred promptly to the designated Chief Referee, whose decision is final.',
+    'The umpire decides each board, including timeout and tie-break results, and an official marks the winning team for that round on the tournament app. The next board begins when the official starts the next round.'
   ] },
-  { title: 'Player conduct', rules: [
-    'Each player is to use their own idea; no prompting or suggestions from the partner are allowed while playing the game.'
+  { title: 'Player conduct & registered pairings', rules: [
+    'Partners must not offer advice, prompt each other or communicate through gestures during a board. Violations are penalized by the umpire under the applicable rules.',
+    'Registered pairings are fixed for all teams, including multiple teams from the same parish. Players may not be exchanged between teams. Any proposed substitution must receive organizer approval before the fixtures are finalized.'
   ] }
 ];
 
