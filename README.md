@@ -162,7 +162,7 @@ Without Supabase, data lives in `data/tournament.json` (or the `DATA_DIR` enviro
 
 ## Validation
 
-For the revised event details, apply `supabase/migrations/20261014000000_carromia_deadline_time.sql` after the public-gallery migration. It adds a configurable registration closing time in India (9:00 PM by default) and enforces it in the hosted registration RPC. The site, registration forms and local server use the same cutoff. Reporting is 9:45 AM; check-in closes at 10:30 AM and matches begin at 11:00 AM. Each timed round is one board, with the match decided by boards won and ties decided by equal-attempt Golden Pocket / sudden death.
+For the revised event details, apply `supabase/migrations/20261014000000_carromia_deadline_time.sql` after the public-gallery migration. It enforces registration closing at midnight at the end of the deadline date in India. The site and registration forms display only the date; the local server uses the same cutoff. Existing live settings use 24:00, which also works with the original end-of-day registration RPC. Reporting is 9:45 AM; check-in closes at 10:30 AM and matches begin at 11:00 AM. Each timed round is one board, with the match decided by boards won and ties decided by equal-attempt Golden Pocket / sudden death.
 
 ```powershell
 npm test

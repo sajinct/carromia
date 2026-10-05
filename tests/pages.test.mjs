@@ -183,7 +183,7 @@ test('live Pages runtime: public view, official sign-in, roles, conflict retry, 
   db.rows.main.state.event.registrationDeadline = '2000-11-10';
   db.pub.main.state.event.registrationDeadline = '2000-11-10';
   const filesBeforeDeadlineCheck = db.files.size;
-  await assert.rejects(remoteApi('register', { name: 'Late Team', ...where, players, adults }), /Registration closed on 10 November 2000 at 9:00 PM IST/);
+  await assert.rejects(remoteApi('register', { name: 'Late Team', ...where, players, adults }), /Registration closed on 10 November 2000/);
   assert.equal(db.files.size, filesBeforeDeadlineCheck);
   assert.equal(db.rows.main.state.teams.length, 1);
   db.rows.main.state.event.registrationDeadline = '';

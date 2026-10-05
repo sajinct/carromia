@@ -1,4 +1,4 @@
--- CARROMIA: registration closes at the configured India time, defaulting to 9:00 PM.
+-- CARROMIA: registration closes at the configured India time, defaulting to midnight at the end of the deadline date.
 -- Run after 20261013000000_carromia_public_gallery.sql. Safe to re-run.
 -- Existing teams, payments, fixtures and practice data are preserved.
 
@@ -6,7 +6,7 @@ create or replace function public.registration_cutoff(p_settings jsonb) returns 
 language sql immutable set search_path = '' as $$
   select case when coalesce(p_settings->>'registrationDeadline', '2026-11-10') = '' then null
     else (coalesce(p_settings->>'registrationDeadline', '2026-11-10')::date
-      + coalesce(p_settings->>'registrationDeadlineTime', '21:00')::time) at time zone 'Asia/Kolkata' end
+      + coalesce(p_settings->>'registrationDeadlineTime', '24:00')::time) at time zone 'Asia/Kolkata' end
 $$;
 
 create or replace function public.register_teams(p_event text, p_forane text, p_parish text, p_centre_type text, p_teams jsonb, p_adults boolean default false, p_coordinator jsonb default null, p_payment jsonb default null)
@@ -59,7 +59,7 @@ begin
   v_deadline := coalesce(v_state->'event'->>'registrationDeadline', '2026-11-10');
   v_pending := coalesce((v_state->'event'->>'paymentRequired')::boolean, false);
   if p_event = 'main' and v_deadline ~ '^\d{4}-\d{2}-\d{2}$' and now() >= public.registration_cutoff(v_state->'event') then
-    raise exception 'Registration closed on % at % IST.', to_char(v_deadline::date, 'FMDD FMMonth YYYY'), to_char(public.registration_cutoff(v_state->'event') at time zone 'Asia/Kolkata', 'FMHH12:MI AM') using errcode = 'PT400';
+    raise exception 'Registration closed on %.', to_char(v_deadline::date, 'FMDD FMMonth YYYY') using errcode = 'PT400';
   end if;
   if jsonb_array_length(v_teams) >= v_max then raise exception 'All % team slots are taken. Registration is full.', v_max using errcode = 'PT400'; end if;
 
@@ -186,7 +186,7 @@ end $$;
 
 -- Publish the new default for existing event settings using the usual public-copy filter.
 update public.tournament set
-  state = jsonb_set(state, '{event,registrationDeadlineTime}', '"21:00"'::jsonb),
+  state = jsonb_set(state, '{event,registrationDeadlineTime}', '"24:00"'::jsonb),
   version = version + 1, updated_at = now()
 where id = 'main' and not (state->'event' ? 'registrationDeadlineTime');
 
