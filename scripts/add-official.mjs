@@ -1,15 +1,15 @@
 // Creates (or updates) a tournament official in Supabase.
-// Usage: npm run add-official -- <email> "<Full name>" <admin|official|checkin|lunch|umpire> [umpire's boards, e.g. 1,3]
+// Usage: npm run add-official -- <email> "<Full name>" <admin|official|checkin|lunch|umpire|media> [assigned boards, e.g. 1,3]
 // A new account gets a generated password, printed once. Existing accounts keep their password.
 import { randomBytes } from 'node:crypto';
 import { supabaseStore } from '../lib/store.mjs';
 
 const [email, name, role, boardList = ''] = process.argv.slice(2);
-const boards = role === 'umpire' ? [...new Set(boardList.split(',').filter(Boolean).map(Number))].sort((a, b) => a - b) : [];
+const boards = ['umpire', 'media'].includes(role) ? [...new Set(boardList.split(',').filter(Boolean).map(Number))].sort((a, b) => a - b) : [];
 const { SUPABASE_URL, SUPABASE_SECRET_KEY } = process.env;
 if (!SUPABASE_URL || !SUPABASE_SECRET_KEY) throw new Error('Set SUPABASE_URL and SUPABASE_SECRET_KEY (see .env.example).');
-if (!email?.includes('@') || !name?.trim() || !['admin', 'official', 'checkin', 'lunch', 'umpire'].includes(role) || (role === 'umpire' && (!boards.length || boards.some(b => ![1, 2, 3, 4].includes(b))))) {
-  console.error('Usage: npm run add-official -- <email> "<Full name>" <admin|official|checkin|lunch|umpire> [umpire’s boards, e.g. 1,3]'); process.exit(1);
+if (!email?.includes('@') || !name?.trim() || !['admin', 'official', 'checkin', 'lunch', 'umpire', 'media'].includes(role) || (['umpire', 'media'].includes(role) && (!boards.length || boards.some(b => ![1, 2, 3, 4].includes(b))))) {
+  console.error('Usage: npm run add-official -- <email> "<Full name>" <admin|official|checkin|lunch|umpire|media> [assigned boards, e.g. 1,3]'); process.exit(1);
 }
 const { call } = supabaseStore(SUPABASE_URL, SUPABASE_SECRET_KEY);
 const address = email.trim().toLowerCase();

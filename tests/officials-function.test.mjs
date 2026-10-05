@@ -90,3 +90,21 @@ test('officials function: admins manage officials; everyone else is refused; no 
   assert.deepEqual(db.audit.map(a => `${a.actor_name}:${a.action}`), ['Asha Admin:officials:add', 'Asha Admin:officials:add', 'Asha Admin:officials:update', 'Asha Admin:officials:update', 'Asha Admin:officials:update', 'Asha Admin:officials:update', 'Asha Admin:officials:add', 'Asha Admin:officials:reset-password', 'Asha Admin:officials:reset-password', 'Asha Admin:officials:remove']);
   assert.ok(!JSON.stringify(db.audit).includes('chosen-pass-1'), 'passwords never reach the audit log');
 });
+
+
+test('officials function creates media managers with mandatory assigned boards', async () => {
+  const db = fakeSupabase();
+  const call = async body => {
+    const res = await handle(new Request('https://x/functions/v1/officials', { method: 'POST', headers: { Authorization: 'Bearer token-u1' }, body: JSON.stringify(body) }), { url: 'https://example.supabase.co', key: 'sb_secret_test' }, db.fetch);
+    return { status: res.status, body: await res.json() };
+  };
+  for (const boards of [[], [0], [5]]) assert.equal((await call({ action: 'add', email: 'media@example.org', name: 'Media', role: 'media', boards })).status, 400);
+  const added = await call({ action: 'add', email: 'media@example.org', name: 'Media', role: 'media', boards: [3, '1', 3] });
+  assert.equal(added.status, 200); assert.deepEqual(added.body.official.boards, [1, 3]);
+  const id = added.body.official.id;
+  assert.equal((await call({ action: 'update', id, role: 'media', boards: [] })).status, 400);
+  assert.equal((await call({ action: 'update', id, name: 'Media Manager' })).status, 200);
+  assert.deepEqual(db.officials.find(o => o.user_id === id).boards, [1, 3]);
+  await call({ action: 'update', id, role: 'official' });
+  assert.deepEqual(db.officials.find(o => o.user_id === id).boards, []);
+});

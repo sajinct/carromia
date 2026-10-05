@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { emptyState, seedDemo, updateMedia, publicState, refusal, actions, freshEvent } from '../lib/tournament.mjs';
+import { emptyState, seedDemo, updateMedia, publicState, refusal, actions, freshEvent, checkBoard, teamsFor } from '../lib/tournament.mjs';
 import { socialLink, boardStream } from '../public/social.js';
 import { streamCard, galleryContent, mediaAdmin, renderMediaPage } from '../public/media-view.js';
 
@@ -77,9 +77,10 @@ test('gallery publishes only approved links and excludes private review data', (
   updateMedia(state, { operation: 'remove', id }); assert.equal(state.media.gallery.length, 0);
 });
 
-test('only admins manage real-event media; officials may rehearse in practice', () => {
+test('admins and assigned media staff manage media; officials may rehearse in practice', () => {
   for (const role of ['official', 'checkin', 'lunch', 'umpire']) assert.match(refusal(actions.media, { role }), /Only an event admin/);
   assert.equal(refusal(actions.media, { role: 'admin' }), '');
+  assert.equal(refusal(actions.media, { role: 'media' }), '');
   assert.equal(refusal(actions.media, { role: 'official' }, true), '');
 });
 
@@ -100,4 +101,30 @@ test('media refresh retains the same iframe node and avoids writing its unchange
   renderMediaPage(root, '1');
   assert.equal(root.childNodes[0].childNodes[0].nodeValue, '1');
   assert.equal(root.childNodes[1], player); assert.deepEqual(player.writes, []);
+});
+
+
+test('media managers manage assigned-board streams and the common gallery', () => {
+  const state = seedDemo(), user = { role: 'media', boards: [1, 3] };
+  const run = input => { assert.equal(refusal(actions.media, user), ''); checkBoard(state, input, user); updateMedia(state, input); };
+  run({ operation: 'stream', boardId: 1, url: video, enabled: true });
+  run({ operation: 'stream', matchId: 'M01', url: video, enabled: true });
+  for (const input of [{ operation: 'stream', boardId: 2 }, { operation: 'stream', matchId: 'M02', boardId: 1 }, { operation: 'stream', matchId: 'M05', boardId: 1 }]) assert.throws(() => checkBoard(state, input, user), /assigned to you/);
+  assert.throws(() => checkBoard(state, { operation: 'settings' }, user), /Only an event admin/);
+  run({ operation: 'add', title: 'Shared gallery photo', kind: 'photo', url: 'https://instagram.com/p/SHARED/' });
+  const id = state.media.gallery[0].id;
+  assert.equal(state.media.gallery[0].boardId, undefined);
+  updateMedia(state, { operation: 'add', title: 'Another contributor', kind: 'photo', url: 'https://instagram.com/p/OTHER/' });
+  run({ operation: 'review', id: state.media.gallery[0].id, status: 'approved' });
+  state.user = user;
+  const html = mediaAdmin(state);
+  assert.match(html, /Shared gallery photo/); assert.match(html, /Another contributor/);
+  assert.doesNotMatch(html, /media-settings-form|value="M02"|data-board="2"|name="boardId"/);
+  assert.equal(teamsFor(state.teams, 'media')[0].checkinToken, undefined);
+  assert.equal(teamsFor(state.teams, 'media')[0].players[0].mobile, undefined);
+  for (const [name, action] of Object.entries(actions)) if (name !== 'media') assert.notEqual(refusal(action, user), '', name);
+  user.boards = [2];
+  run({ operation: 'review', id, status: 'approved' });
+  run({ operation: 'remove', id });
+  assert.throws(() => run({ operation: 'stream', boardId: 1, remove: true }), /assigned to you/);
 });

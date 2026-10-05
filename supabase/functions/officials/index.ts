@@ -9,7 +9,7 @@
 
 const cors = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'authorization, apikey, content-type, x-client-info', 'Access-Control-Allow-Methods': 'POST, OPTIONS' };
 // As in lib/tournament.mjs: admins, officials, and the one-job roles. Umpires run the boards listed in `boards`.
-const roles = ['admin', 'official', 'checkin', 'lunch', 'umpire'];
+const roles = ['admin', 'official', 'checkin', 'lunch', 'umpire', 'media'];
 
 function fail(status, message) { throw Object.assign(new Error(message), { status }); }
 function newPassword() { const bytes = crypto.getRandomValues(new Uint8Array(9)); return btoa(String.fromCharCode(...bytes)).replace(/\+/g, 'x').replace(/\//g, 'y').replace(/=+$/, ''); }
@@ -43,11 +43,11 @@ export async function handle(req, env, fetchImpl = fetch) {
     const officialFor = async id => (await call(`/rest/v1/officials?user_id=eq.${encodeURIComponent(id)}&select=user_id,name,role,boards`))[0] || fail(404, 'Official not found.');
     const cleanName = value => { const name = String(value ?? '').trim().slice(0, 80); if (!name) fail(400, 'Enter the official’s name.'); return name; };
     const cleanRole = value => { if (!roles.includes(value)) fail(400, 'Choose a role.'); return value; };
-    // An umpire's boards, 1 to 4 (at least one); every other role has none.
+    // Umpires and media managers need at least one assigned board; other roles have none.
     const cleanBoards = (role, value) => {
-      if (role !== 'umpire') return [];
+      if (!['umpire', 'media'].includes(role)) return [];
       const boards = [...new Set((Array.isArray(value) ? value : String(value ?? '').split(',')).map(b => String(b).trim()).filter(Boolean).map(Number))].sort((a, b) => a - b);
-      if (!boards.length || boards.some(b => ![1, 2, 3, 4].includes(b))) fail(400, 'Choose the umpire’s boards, from 1 to 4.');
+      if (!boards.length || boards.some(b => ![1, 2, 3, 4].includes(b))) fail(400, role === 'media' ? 'Choose the media manager’s boards, from 1 to 4.' : 'Choose the umpire’s boards, from 1 to 4.');
       return boards;
     };
     const cleanPassword = value => { const password = String(value ?? '').trim(); if (password && password.length < 8) fail(400, 'Passwords need at least 8 characters.'); return password; };

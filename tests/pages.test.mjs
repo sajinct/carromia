@@ -404,3 +404,37 @@ test('Pages runtime syncs streams and gallery approvals and rejects official med
   const pub = await remoteApi('state'); assert.equal(pub.media.gallery.length, 1); assert.equal(pub.media.streams.length, 1);
   await assert.rejects(remoteApi('media', { operation: 'review', id, status: 'rejected' }), /Sign in/);
 });
+
+
+test('Pages media managers run assigned streams and share gallery approval without scoring access', async t => {
+  const db = fakeSupabase(), memory = new Map(), realFetch = globalThis.fetch;
+  db.users['media@example.org'] = { id: 'u7', password: 'media-pass', official: { name: 'Media Manager', role: 'media', boards: [1] } };
+  globalThis.localStorage = { getItem: key => memory.get(key) ?? null, setItem: (key, value) => memory.set(key, value), removeItem: key => memory.delete(key) };
+  globalThis.fetch = db.fetch; globalThis.location = { origin: 'https://sajinct.github.io', pathname: '/carromia/', search: '' };
+  t.after(() => { globalThis.fetch = realFetch; delete globalThis.localStorage; delete globalThis.location; });
+  const { remoteApi } = await import('../dist/runtime.js');
+  await remoteApi('login', { email: 'asha@example.org', password: 'admin-pass' });
+  await remoteApi('media', { operation: 'settings', streamsEnabled: true, galleryEnabled: true });
+  await remoteApi('media', { operation: 'add', title: 'Shared gallery', url: 'https://instagram.com/p/SHARED/', kind: 'photo' });
+  await remoteApi('logout'); await remoteApi('login', { email: 'media@example.org', password: 'media-pass' });
+  const view = await remoteApi('state');
+  assert.equal(view.user.role, 'media'); assert.equal(view.teams[0].checkinToken, undefined);
+  await remoteApi('media', { operation: 'stream', boardId: 1, url: 'https://youtu.be/M7lc1UVf-VE', enabled: true });
+  await remoteApi('media', { operation: 'stream', matchId: 'M01', url: 'https://youtu.be/M7lc1UVf-VE', enabled: true });
+  await assert.rejects(remoteApi('media', { operation: 'stream', boardId: 2, remove: true }), /assigned to you/);
+  await assert.rejects(remoteApi('media', { operation: 'stream', matchId: 'M02', boardId: 1, url: 'https://youtu.be/M7lc1UVf-VE' }), /assigned to you/);
+  await assert.rejects(remoteApi('media', { operation: 'settings', galleryEnabled: false }), /Only an event admin/);
+  const id = view.media.gallery[0].id;
+  await remoteApi('media', { operation: 'review', id, status: 'approved' });
+  assert.equal(db.public.state.media.gallery[0].id, id);
+  await remoteApi('media', { operation: 'add', title: 'Mobile photo', url: 'https://instagram.com/p/MOBILE/', kind: 'photo' });
+  for (const action of ['start', 'checkin', 'settings', 'draw', 'official-add']) await assert.rejects(remoteApi(action, { id: 'M01' }));
+  await assert.rejects(remoteApi('photos'), /Player photos are for/);
+  await assert.rejects(remoteApi('payment-proofs'), /Payment screenshots are for/);
+  db.users['media@example.org'].official.boards = [2];
+  // Changes apply before a write even when the browser has not refreshed its view.
+  await assert.rejects(remoteApi('media', { operation: 'stream', boardId: 1, remove: true }), /assigned to you/);
+  await remoteApi('media', { operation: 'stream', boardId: 2, url: 'https://youtu.be/M7lc1UVf-VE', enabled: true });
+  await remoteApi('media', { operation: 'remove', id });
+  assert.equal(db.public.state.media.gallery.length, 0);
+});

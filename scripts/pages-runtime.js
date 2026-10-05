@@ -200,8 +200,9 @@ export async function remoteApi(path, input = {}) {
       p_teams: teams.map(t => ({ name: t.name, players: Array.isArray(t.players) ? t.players : [], primaryContact: Number(t.primaryContact) === 1 ? 1 : 0, lunch: Number(t.lunch) || 0 })) });
   }
 
-  const user = await official();
+  let user = await official();
   if (path === 'state') return view(user);
+  if (user) user = await profile(user);
   if (officialActions[path]) return manageOfficials(user, officialActions[path], input);
   fail(!user, 'Sign in to the tournament desk first.');
   // Payment screenshots are for admins and officials; player photos also for the check-in desk.

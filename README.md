@@ -184,3 +184,14 @@ In the desk, admins open **Streams & gallery**. Enable board streams, paste a sp
 Instagram live links open the broadcast on Instagram; they are not treated as embeddable live players. Every embed includes an original-source link for private, deleted, restricted or unavailable content. Use public posts and broadcasts that permit embedding.
 
 For the photo/video wall, enable the gallery and add public YouTube, Facebook or Instagram post links with a title and media type. New items are **pending**. Review the original, then **Approve** to publish at `/gallery` (`#/gallery` on Pages), **Hide / pending** to unpublish, **Reject**, or **Remove**. The gallery is linked in public navigation while enabled. This is a manually curated wall, not automatic social account ingestion. Media stays hosted by the original platform. Links and approvals sync with the existing event updates and stay separate in practice mode. Starting a fresh event clears media links with the tournament data.
+
+
+### Media manager role
+
+Apply `supabase/migrations/20261012000000_carromia_media_role.sql` after the media migration, then redeploy `supabase/functions/officials/index.ts` as the **officials** Edge Function and deploy the updated site. Existing roles and accounts are unchanged.
+
+In **Officials**, add or edit an account, choose **Media: assigned streams & shared gallery**, and assign at least one board. The media manager opens directly into **Streams & gallery**. They can add, enable, replace or remove stream links for those boards, and match stream links once a match has been assigned to one of their boards. They cannot manage unassigned matches or streams for another board.
+
+The gallery is common to the whole event: every media manager can add links and approve, hide, reject or remove any gallery item. Gallery items have no board association. Global stream/gallery display switches remain with admins. Media accounts cannot check in teams, score matches, change the draw or settings, manage officials, download backups, or open private player photos/payment screenshots. Board reassignment takes effect before the next action; the database enforces permissions even if a browser submits a crafted write.
+
+To create a media account through the command line: `npm run add-official -- media@example.org "Media Manager" media 1,3`.

@@ -32,7 +32,7 @@ function change(fn) {
   });
   queue = run.catch(() => {}); return run;
 }
-function official(req) { const token = /(?:^|;\s*)carromia_session=([^;]+)/.exec(req.headers.cookie || '')?.[1]; const session = sessions.get(token); return session?.expires > Date.now() ? session.user : null; }
+async function official(req) { const token = /(?:^|;\s*)carromia_session=([^;]+)/.exec(req.headers.cookie || '')?.[1]; const session = sessions.get(token); if (!(session?.expires > Date.now())) return null; return supabase ? store.officialProfile(session.user) : session.user; }
 function signIn(res, user) {
   const token = randomBytes(32).toString('hex'); sessions.set(token, { expires: Date.now() + 12 * 3600000, user });
   res.setHeader('Set-Cookie', `carromia_session=${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=43200${process.env.PUBLIC_URL?.startsWith('https:') ? '; Secure' : ''}`);
@@ -66,13 +66,13 @@ const server = http.createServer(async (req, res) => {
       res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive' }); res.write(': connected\n\n'); streams.add(res);
       const heartbeat = setInterval(() => res.write(': heartbeat\n\n'), 20000); req.on('close', () => { clearInterval(heartbeat); streams.delete(res); }); return;
     }
-    if (url.pathname === '/api/state' && req.method === 'GET') return send(res, 200, view(official(req)));
-    if (url.pathname === '/api/backup' && req.method === 'GET') { const user = official(req); if (!user) return send(res, 401, { error: 'Sign in to download a backup.' }); if (user.role !== 'admin') return send(res, 403, { error: 'Only an event admin can download backups.' }); return send(res, 200, state); }
+    if (url.pathname === '/api/state' && req.method === 'GET') return send(res, 200, view(await official(req)));
+    if (url.pathname === '/api/backup' && req.method === 'GET') { const user = await official(req); if (!user) return send(res, 401, { error: 'Sign in to download a backup.' }); if (user.role !== 'admin') return send(res, 403, { error: 'Only an event admin can download backups.' }); return send(res, 200, state); }
     // The UPI QR code is public; a team's photos and payment screenshot are for officials only.
     if (url.pathname.startsWith('/api/assets/') && req.method === 'GET') { const path = url.pathname.slice(12); if (!assetPath.test(path)) return send(res, 404, { error: 'File not found.' }); return sendFile(res, 'event-assets', path, 'public, max-age=86400, immutable'); }
     if (['/api/payment-proofs', '/api/photos', '/api/photo-full'].includes(url.pathname) || url.pathname.startsWith('/api/files/')) {
       if (req.method !== 'GET') return send(res, 405, { error: 'Method not allowed.' });
-      const user = official(req);
+      const user = await official(req);
       if (!user) return send(res, 401, { error: 'Sign in to the tournament desk first.' });
       // Payment screenshots are for admins and officials; player photos also for the check-in desk.
       const kind = url.pathname === '/api/payment-proofs' || url.pathname.endsWith('/payment.jpg') ? 'payments' : 'photos';
@@ -146,7 +146,7 @@ const server = http.createServer(async (req, res) => {
         if (url.pathname === '/api/team-form') return send(res, 200, await formFor(teamForm(state, id, input.mobile)));
         return send(res, 200, { forms: await Promise.all(groupForm(state, id, input.mobile).map(formFor)) });
       }
-      const user = official(req);
+      const user = await official(req);
       if (!user) return send(res, 401, { error: 'Sign in to the tournament desk first.' });
       if (url.pathname === '/api/change-password') {
         if (!supabase) return send(res, 400, { error: 'The desk password is set with ADMIN_PASSWORD when the server starts.' });

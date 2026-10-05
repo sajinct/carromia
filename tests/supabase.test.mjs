@@ -10,6 +10,9 @@ function mockSupabase() {
   const db = { row: null, public: null, audit: [], photos: [], files: new Map(), badKeyHeaders: 0 };
   const users = { 'asha@example.org': { id: 'u1', password: 'admin-pass' }, 'omar@example.org': { id: 'u2', password: 'official-pass' }, 'guest@example.org': { id: 'u3', password: 'guest-pass' }, 'cara@example.org': { id: 'u4', password: 'checkin-pass' }, 'lena@example.org': { id: 'u5', password: 'lunch-pass' }, 'uma@example.org': { id: 'u6', password: 'umpire-pass' } };
   const officials = { u1: { name: 'Asha Admin', role: 'admin', boards: [] }, u2: { name: 'Omar Official', role: 'official', boards: [] }, u4: { name: 'Cara Checkin', role: 'checkin', boards: [] }, u5: { name: 'Lena Lunch', role: 'lunch', boards: [] }, u6: { name: 'Uma Umpire', role: 'umpire', boards: [1] } };
+  users['media@example.org'] = { id: 'u7', password: 'media-pass' };
+  officials.u7 = { name: 'Media Manager', role: 'media', boards: [1] };
+  db.officials = officials;
   const server = http.createServer(async (req, res) => {
     const chunks = []; for await (const chunk of req) chunks.push(chunk);
     const raw = Buffer.concat(chunks), json = /json/.test(req.headers['content-type'] || '') || !req.headers['content-type'];
@@ -131,4 +134,35 @@ test('Supabase mode: named officials, roles, audit trail, and conflict-safe save
   for (const secret of ['admin-pass', 'official-pass', 'new-secret-1', 'wrong']) assert.ok(!JSON.stringify(db.audit).includes(secret), 'passwords never reach the audit log');
   assert.equal(db.public.teams.length, 4); assert.ok(!JSON.stringify(db.public).includes('9111111111'), 'the public copy has no mobile numbers'); assert.ok(!JSON.stringify(db.public).includes('checkinToken'));
   assert.equal(db.badKeyHeaders, 0, 'sb_secret keys are sent only in the apikey header');
+});
+
+
+test('server media sessions enforce board scope and common gallery, including reassignment', async t => {
+  const { db, server: mock } = mockSupabase();
+  await new Promise(resolve => mock.listen(3116, '127.0.0.1', resolve)); t.after(() => mock.close());
+  const child = spawn(process.execPath, ['server.mjs'], { cwd: join(import.meta.dirname, '..'), env: { ...process.env, PORT: '3117', SUPABASE_URL: 'http://127.0.0.1:3116/', SUPABASE_SECRET_KEY: 'sb_secret_test', ADMIN_PASSWORD: '' }, stdio: ['ignore', 'pipe', 'pipe'] });
+  t.after(async () => { child.kill(); await new Promise(resolve => child.once('exit', resolve)); });
+  await new Promise((resolve, reject) => { child.stdout.once('data', resolve); child.once('exit', code => reject(new Error(`Server exited ${code}`))); });
+  const base = 'http://localhost:3117';
+  const post = (path, body, cookie = '') => fetch(`${base}/api/${path}`, { method: 'POST', headers: { 'Content-Type': 'application/json', Cookie: cookie }, body: JSON.stringify(body) });
+  const login = async (email, password) => (await post('login', { email, password })).headers.get('set-cookie').split(';')[0];
+  const admin = await login('asha@example.org', 'admin-pass'), media = await login('media@example.org', 'media-pass');
+  assert.equal((await post('demo', {}, admin)).status, 200);
+  assert.equal((await post('media', { operation: 'settings', streamsEnabled: true, galleryEnabled: true }, admin)).status, 200);
+  assert.equal((await post('media', { operation: 'stream', boardId: 1, url: 'https://youtu.be/M7lc1UVf-VE', enabled: true }, media)).status, 200);
+  assert.equal((await post('media', { operation: 'stream', matchId: 'M01', url: 'https://youtu.be/M7lc1UVf-VE', enabled: true }, media)).status, 200);
+  assert.equal((await post('media', { operation: 'stream', boardId: 2, remove: true }, media)).status, 400);
+  assert.equal((await post('media', { operation: 'settings', galleryEnabled: false }, media)).status, 400);
+  assert.equal((await post('media', { operation: 'add', title: 'Shared gallery', url: 'https://instagram.com/p/SHARED/', kind: 'photo' }, admin)).status, 200);
+  const id = db.row.state.media.gallery[0].id;
+  assert.equal((await post('media', { operation: 'review', id, status: 'approved' }, media)).status, 200);
+  assert.equal(db.public.media.gallery[0].id, id);
+  assert.equal((await post('start', { id: 'M01' }, media)).status, 403);
+  assert.equal((await fetch(`${base}/api/photos`, { headers: { Cookie: media } })).status, 403);
+  db.officials.u7.boards = [2];
+  assert.equal((await post('media', { operation: 'stream', boardId: 1, remove: true }, media)).status, 400);
+  assert.equal((await post('media', { operation: 'stream', boardId: 2, url: 'https://youtu.be/M7lc1UVf-VE', enabled: true }, media)).status, 200);
+  assert.equal((await post('media', { operation: 'remove', id }, media)).status, 200);
+  delete db.officials.u7;
+  assert.equal((await post('media', { operation: 'stream', boardId: 2, remove: true }, media)).status, 401);
 });

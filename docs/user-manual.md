@@ -859,7 +859,7 @@ The full technical steps are in the project's [README](../README.md). In short:
 **Admin:** settings → officials → rehearse → check the team list → **Create knockout draw** → walkovers and corrections as needed → export results → download a backup.
 
 
-## Streams & gallery (event admins)
+## Streams & gallery (admins and media managers)
 
 Open **Streams & gallery** in the desk menu (on phones, under More options). Both displays start disabled.
 
@@ -870,3 +870,14 @@ Open **Streams & gallery** in the desk menu (on phones, under More options). Bot
 5. Preview Live boards or Gallery using the links at the top. Global switches hide the displays without deleting saved links. Changes update other devices automatically. Practice mode has its own media links; a fresh event clears them.
 
 The public Gallery appears in navigation when enabled. It contains only links added and approved by admins; it does not automatically import everything from social accounts.
+
+
+### Assigning media managers
+
+An admin opens **Officials**, adds or edits a person, selects **Media: assigned streams & shared gallery**, and ticks their assigned boards. At least one board is required. Media managers sign in with their own account and go straight to **Streams & gallery**.
+
+- **Streams:** manage links and visibility only for assigned boards. Match links can be managed after the tournament desk assigns the match to one of those boards.
+- **Gallery:** shared across the event. All media managers can add links, review and approve them, hide them, reject them or remove them. There is no board-specific gallery.
+- **Display settings:** admins turn the live stream display and public gallery on or off.
+
+Media managers cannot operate match scores, check-in, payments, settings or other accounts. Reassigning their boards takes effect on their next action.
