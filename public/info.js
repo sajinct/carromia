@@ -64,6 +64,22 @@ export const goodToKnow = [
   'The tournament desk may refuse check-in if a player, their ID proof or the attested form does not match the registration.'
 ];
 
+// Emphasis for the public home and rules pages; the underlying wording stays plain text.
+export const importantPhrases = [
+  'thumbing-only', 'two registered players', 'best of three boards', 'win two boards',
+  '10 minutes', '30 minutes', 'fewer assigned pieces remaining', 'No point scoring',
+  'Personal strikers are not permitted', 'same stroke or the immediately following stroke',
+  'properly pocketed and covered by either team', 'loss of the board',
+  'three attempts', 'Both teams must complete their attempt',
+  'Karnataka State Carrom Association (KSCA)', 'Chief Referee',
+  'must not offer advice', 'Players may not be exchanged between teams',
+  'organizer approval before the fixtures are finalized',
+  '9:45 AM', '10:30 AM', '11:00 AM', 'late teams may forfeit their slot',
+  'pre-book it during registration', 'Present the coupons', 'absence may result in a walkover',
+  'signed by both players', 'attested by the Parish Priest with the parish seal',
+  'Government ID proof', 'Parish family record book'
+];
+
 // Each timed round on the tournament app represents one board. Tie-breaks decide that board,
 // and boards won decide the match; no carrom point scoring is used in this event.
 export const ruleSections = [

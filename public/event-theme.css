@@ -1,4 +1,24 @@
 /* CARROMIA's event identity: deep teal, tournament gold and warm board ivory. */
+/* Key event details and readable emphasis on the public home and rules pages. */
+.important-panel{margin:26px 0 30px;padding:24px;border:1px solid #daca9c;border-top:4px solid var(--gold);border-radius:var(--radius);background:#fffaf0}
+.important-panel-heading{display:flex;align-items:center;gap:10px;margin-bottom:18px;color:var(--green)}
+.important-panel-heading .icon{width:22px;height:22px}
+.important-panel-heading h2{font-size:20px;letter-spacing:-.4px}
+.important-points{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;list-style:none;margin:0;padding:0}
+.important-panel--rules .important-points{grid-template-columns:repeat(3,minmax(0,1fr))}
+.important-points>li{min-width:0;padding:17px;border:1px solid #e5dfcf;border-radius:10px;background:var(--paper)}
+.important-points>li.important-deadline{background:#fbe9b6;border-color:#cfb36b}
+.important-label{display:flex;align-items:center;gap:7px;margin-bottom:10px;font-size:11px;font-weight:700;color:#526660}
+.important-label .icon{width:16px;height:16px}
+.important-points h3{font-size:19px;line-height:1.35;color:var(--green);overflow-wrap:anywhere}
+.important-points p{font-size:12px;line-height:1.65;color:#56675f;margin-top:7px}
+.rule-emphasis{font-weight:750;color:#123b3d;background:linear-gradient(transparent 58%,#f4cf6659 58%);padding:0 .08em;box-decoration-break:clone;-webkit-box-decoration-break:clone}
+.info-grid>div.deadline-highlight{border:2px solid #cfb36b;background:#fff5d6}
+.info-grid>div.deadline-highlight>span{color:#705718}
+.timeline li.priority-event{padding:14px 12px;margin:5px 0;border-radius:8px;background:#f5ecd7;border-bottom-color:transparent}
+.timeline li.priority-event span{font-weight:650;color:var(--green)}
+@media(max-width:1050px){.important-points,.important-panel--rules .important-points{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:580px){.important-panel{padding:17px;margin:22px 0}.important-panel-heading h2{font-size:19px}.important-points,.important-panel--rules .important-points{grid-template-columns:1fr}.important-points>li{padding:16px}.important-points h3{font-size:20px}.important-points p{font-size:13px}}
 :root{--bg:#f8f5ee;--paper:#fffdf8;--green:#123b3d;--green-2:#235b5a;--lime:#f4cf66;--ink:#203337;--muted:#66716e;--line:#e1ddd2;--soft:#eef1e8;--orange:#986329;--radius:14px;--gold:#f5ca55;--queen:#b84435}
 body{background:var(--bg)}
 /* Slim, rounded scroll handles for pages, brackets, tables and dialogs. */
