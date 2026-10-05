@@ -1,4 +1,4 @@
-// The Mandya Diocese parish / centre register: 53 parishes, 19 mass centres and 13 mission centres,
+// The Diocese of Mandya parish / centre register: 53 parishes, 19 mass centres and 13 mission centres,
 // grouped by forane or zone in the register's order. Teams register from one of these.
 
 const register = {

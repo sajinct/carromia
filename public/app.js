@@ -158,7 +158,7 @@ function home() {
     <div class="event-edition"><span class="edition-dot"></span> THE DIOCESE-WIDE CARROM TOURNAMENT</div>
     <h1 class="ph-title" id="event-title"><span class="ph-name">${esc(e.name)}</span><span class="ph-year">${esc(e.year)} <span class="year-line"></span></span></h1>
     <p class="ph-tag">Small board.<br><em>Big dreams.</em></p>
-    <p class="ph-lead">Two players. One parish. Every coin counts. Bring your partner, represent your church and take your shot at the title.</p>
+    <p class="ph-lead">Two players. One parish. Every coin counts. Bring your partner, represent your Parish and take your shot at the title.</p>
     <div class="hero-actions"><a class="btn primary large" href="${closed ? '/live' : '/register'}">${closed ? 'View live boards' : 'Register your team'} ${icon('arrow')}</a><a class="text-link" href="/rules">Read the rules ${icon('arrow')}</a></div>
     <div class="hero-registration ${closed ? 'is-closed' : ''}"><span class="edition-dot"></span>${closed ? (state.demo ? 'Registration is currently closed' : esc(state.registration.reason || 'Registration is currently closed')) : `Registration open · ${state.registration.slotsLeft} team slot${state.registration.slotsLeft === 1 ? '' : 's'} available`}</div>
   </div>

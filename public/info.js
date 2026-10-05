@@ -44,7 +44,7 @@ export const massVenue = 'Mary Matha Church, Vijayanagar';
 export const venueAddress = '24, Church Service Road, Sri Krishnadevaraya Rd, Hoshalli Extension, Stage 1, Vijayanagar, Bengaluru, Karnataka 560040';
 export const venueMapsUrl = 'https://www.google.com/maps/place/Mary+Matha+Church/@12.9670704,77.5450189,21z/data=!4m14!1m7!3m6!1s0x3bae3de229170451:0xe58df59f05578497!2sMary+Matha+Church!8m2!3d12.967178!4d77.5450341!16s%2Fg%2F1hc1qpsty!3m5!1s0x3bae3de229170451:0xe58df59f05578497!8m2!3d12.967178!4d77.5450341!16s%2Fg%2F1hc1qpsty?entry=ttu&g_ep=EgoyMDI2MDkzMC4wIKXMDSoASAFQAw%3D%3D';
 
-export const about = 'For the first time in the history of Mandya Diocese, a diocese-wide carrom tournament is being hosted to bring our parishes together. Show your skills and represent your church in this historic tournament.';
+export const about = 'For the first time in the history of the Diocese of Mandya, a diocese-wide carrom tournament is being hosted to bring our parishes together. Show your skills and represent your Parish in this historic tournament.';
 
 // Bring these to the registration desk on the day.
 export const documents = [
