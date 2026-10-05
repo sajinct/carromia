@@ -48,20 +48,24 @@ declare
   v_default jsonb := '{"streamsEnabled":false,"galleryEnabled":false,"streams":[],"gallery":[]}'::jsonb;
 begin
   if coalesce(auth.role(), '') = 'service_role' then return new; end if;
-  -- This setting exists only during submit_gallery_link(); still verify the exact append.
-  if current_setting('carromia.public_gallery_submission', true) = 'on' then
-    if tg_op <> 'UPDATE' or (new.state - 'media') is distinct from (old.state - 'media') then
-      raise exception 'A public submission can only add a pending gallery link.' using errcode = 'PT403';
-    end if;
+  -- Allow exactly one public pending link to be prepended. No custom server parameter is
+  -- needed; the endpoint's validation and rate limits run before this update.
+  if tg_op = 'UPDATE' then
     v_old := old.state->'media'; v_new := new.state->'media';
-    if (v_new - 'gallery') is distinct from (v_old - 'gallery')
-       or jsonb_array_length(v_new->'gallery') <> jsonb_array_length(coalesce(v_old->'gallery', '[]'::jsonb)) + 1
-       or ((v_new->'gallery') - 0) is distinct from coalesce(v_old->'gallery', '[]'::jsonb)
-       or v_new->'gallery'->0->>'status' is distinct from 'pending'
-       or v_new->'gallery'->0->>'source' is distinct from 'public' then
-      raise exception 'A public submission can only add a pending gallery link.' using errcode = 'PT403';
+    if (new.state - 'media') is not distinct from (old.state - 'media')
+       and (v_new - 'gallery') is not distinct from (v_old - 'gallery')
+       and v_old->'galleryEnabled' = 'true'::jsonb
+       and jsonb_typeof(v_new->'gallery') = 'array'
+       and jsonb_array_length(v_new->'gallery') = jsonb_array_length(coalesce(v_old->'gallery', '[]'::jsonb)) + 1
+       and jsonb_array_length(v_new->'gallery') <= 200
+       and ((v_new->'gallery') - 0) is not distinct from coalesce(v_old->'gallery', '[]'::jsonb)
+       and v_new->'gallery'->0->>'status' = 'pending'
+       and v_new->'gallery'->0->>'source' = 'public'
+       and v_new->'gallery'->0->>'kind' in ('photo', 'video')
+       and length(btrim(coalesce(v_new->'gallery'->0->>'title', ''))) between 1 and 120
+       and ((v_new->'gallery'->0) - array['id','url','title','kind','status','source','addedAt']) = '{}'::jsonb then
+      if public.normalize_gallery_link(v_new->'gallery'->0->>'url') = v_new->'gallery'->0->>'url' then return new; end if;
     end if;
-    return new;
   end if;
 
   select role, boards into v_role, v_boards from public.officials where user_id = auth.uid();
@@ -91,7 +95,7 @@ end $$;
 
 -- The endpoint accepts content fields only. Status, source, ID and timestamps are set here.
 create or replace function public.submit_gallery_link(p_event text, p_url text, p_title text, p_kind text, p_client_id uuid)
-returns jsonb language plpgsql security definer set search_path = '' set carromia.public_gallery_submission = 'on' as $$
+returns jsonb language plpgsql security definer set search_path = '' as $$
 declare
   v_state jsonb;
   v_media jsonb;

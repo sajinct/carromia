@@ -7,11 +7,15 @@ import { seedDemo, updateMedia, publicState } from '../lib/tournament.mjs';
 const migration = name => readFileSync(new URL(`../supabase/migrations/${name}`, import.meta.url), 'utf8');
 const mediaId = '00000000-0000-0000-0000-000000000001', adminId = '00000000-0000-0000-0000-000000000002';
 
-async function mediaDatabase(t) {
+async function mediaDatabase(t, restricted = false) {
   const db = new PGlite(); t.after(() => db.close());
   await db.exec(`
     create role anon; create role authenticated; create role service_role;
+    create role sql_editor nosuperuser;
     create schema auth;
+  `);
+  if (restricted) await db.exec('alter schema public owner to sql_editor; alter schema auth owner to sql_editor; set role sql_editor');
+  await db.exec(`
     create function auth.role() returns text language sql as $$ select current_setting('request.jwt.claim.role', true) $$;
     create function auth.uid() returns uuid language sql as $$ select nullif(current_setting('request.jwt.claim.sub', true), '')::uuid $$;
     create table public.officials (user_id uuid primary key, name text, role text, boards int[] not null default '{}',
@@ -121,7 +125,17 @@ test('PostgreSQL public gallery submissions stay pending and preserve all other 
   assert.deepEqual(row.state.boards, seed.boards); assert.deepEqual(row.state.event, seed.event); assert.deepEqual(row.state.activity, seed.activity);
   const publicRow = (await db.query('select state from public.tournament_public where id=$1', ['main'])).rows[0];
   assert.deepEqual(publicRow.state.media.gallery, []);
-  assert.equal((await db.query("select current_setting('carromia.public_gallery_submission', true) as value")).rows[0].value, '', 'submission-only permission does not remain enabled');
+  // Even a direct update cannot use a public item to approve content or alter event data.
+  for (const edit of [
+    s => { s.media.gallery[0].status = 'approved'; },
+    s => { s.media.streamsEnabled = false; },
+    s => { s.matches[0].status = 'playing'; }
+  ]) {
+    const forged = structuredClone(row.state);
+    forged.media.gallery.unshift({ ...forged.media.gallery[0], id: 'forged', url: 'https://www.instagram.com/p/FORGED/' });
+    edit(forged);
+    await assert.rejects(db.query('update public.tournament set state=$1 where id=$2', [forged, 'main']), /Only an event admin/);
+  }
   await assert.rejects(db.query('select public.save_tournament($1,$2,null,$3,null,$4)', [row.version, row.state, 'media', 'main']), /Sign in as a tournament official/);
   for (let i = 1; i <= 7; i++) await submit(`https://instagram.com/p/PHOTO${i}/`);
   await assert.rejects(submit('https://instagram.com/p/NINTH/'), /Too many links/);
@@ -135,16 +149,28 @@ test('PostgreSQL public gallery submissions stay pending and preserve all other 
   updateMedia(row.state, { operation: 'review', id: row.state.media.gallery.find(p => p.kind === 'video').id, status: 'approved' });
   await db.query('select public.save_tournament($1,$2,null,$3,null,$4)', [row.version, row.state, 'media', 'main']);
   assert.equal((await db.query('select state from public.tournament_public where id=$1', ['main'])).rows[0].state.media.gallery.length, 1);
-  // Even a forged submission-only flag cannot enable streams or approve existing entries.
-  await db.query("select set_config('carromia.public_gallery_submission','on',false)");
+  // Public-submission markers do not permit changes to global display settings.
   row = (await db.query('select version,state from public.tournament where id=$1', ['main'])).rows[0];
   row.state.media.streamsEnabled = false;
-  await assert.rejects(db.query('select public.save_tournament($1,$2,null,$3,null,$4)', [row.version, row.state, 'media', 'main']), /only add a pending gallery link/);
-  await db.query("select set_config('carromia.public_gallery_submission','',false)");
+  await assert.rejects(db.query('select public.save_tournament($1,$2,null,$3,null,$4)', [row.version, row.state, 'media', 'main']), /Only an event admin/);
   await as('service_role');
   await db.query("update public.tournament set state=jsonb_set(state,'{media,galleryEnabled}','false') where id='main'");
   await as('anon'); await assert.rejects(submit('https://instagram.com/p/CLOSED/'), /not accepting links/);
   await as('service_role');
   await db.query("update public.tournament set state=jsonb_set(state,'{event,practiceOff}','true') where id='main'");
   await as('anon'); await assert.rejects(submit('https://instagram.com/p/OFF/', 'Practice', 'photo', 'practice'), /Practice mode is turned off/);
+});
+
+
+test('public gallery migration and endpoint work for a non-superuser SQL editor', async t => {
+  const db = await mediaDatabase(t, true);
+  assert.equal((await db.query('select rolsuper from pg_roles where rolname=current_user')).rows[0].rolsuper, false);
+  await db.query("select set_config('request.jwt.claim.role','service_role',false)");
+  const seed = seedDemo(); updateMedia(seed, { operation: 'settings', galleryEnabled: true });
+  await db.query('insert into public.tournament(id,version,state) values ($1,1,$2)', ['main', seed]);
+  await db.query("select set_config('request.jwt.claim.role','anon',false)");
+  await db.query('select public.submit_gallery_link($1,$2,$3,$4,$5)', ['main', 'https://instagram.com/p/RESTRICTED/', 'A visitor photo', 'photo', '11111111-1111-1111-1111-111111111111']);
+  const row = (await db.query('select state from public.tournament where id=$1', ['main'])).rows[0];
+  assert.equal(row.state.media.gallery[0].status, 'pending');
+  assert.deepEqual((await db.query('select state from public.tournament_public where id=$1', ['main'])).rows[0].state.media.gallery, []);
 });
