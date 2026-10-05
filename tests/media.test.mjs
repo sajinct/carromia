@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { emptyState, seedDemo, updateMedia, publicState, refusal, actions, freshEvent, checkBoard, teamsFor } from '../lib/tournament.mjs';
+import { emptyState, seedDemo, updateMedia, publicState, refusal, actions, freshEvent, checkBoard, teamsFor, submitGallery } from '../lib/tournament.mjs';
 import { socialLink, boardStream } from '../public/social.js';
-import { streamCard, galleryContent, mediaAdmin, renderMediaPage } from '../public/media-view.js';
+import { streamCard, galleryContent, mediaAdmin, renderMediaPage, gallerySubmissionForm } from '../public/media-view.js';
 
 const video = 'https://youtu.be/M7lc1UVf-VE';
 test('social embeds use supported HTTPS hosts and normalize specific posts', () => {
@@ -127,4 +127,25 @@ test('media managers manage assigned-board streams and the common gallery', () =
   run({ operation: 'review', id, status: 'approved' });
   run({ operation: 'remove', id });
   assert.throws(() => run({ operation: 'stream', boardId: 1, remove: true }), /assigned to you/);
+});
+
+
+test('public gallery links enter the common queue as pending and appear only after approval', () => {
+  const state = emptyState();
+  assert.throws(() => submitGallery(state, { url: video, title: 'Moment', kind: 'video' }), /not accepting/);
+  assert.doesNotMatch(galleryContent(state), /gallery-submit-invite/);
+  assert.doesNotMatch(gallerySubmissionForm(state), /gallery-submit-form/);
+  updateMedia(state, { operation: 'settings', galleryEnabled: true });
+  assert.match(galleryContent(state), /href="\/gallery\/submit"/);
+  assert.match(galleryContent(state), /data-link-qr="\/gallery\/submit"/);
+  assert.match(gallerySubmissionForm(state), /id="gallery-submit-form"/);
+  submitGallery(state, { url: video, title: 'A great match', kind: 'video', status: 'approved', source: 'official', boardId: 1 });
+  const post = state.media.gallery[0];
+  assert.equal(post.status, 'pending'); assert.equal(post.source, 'public'); assert.equal(post.boardId, undefined);
+  assert.equal(publicState(state).media.gallery.length, 0);
+  assert.match(mediaAdmin(state), /Public submission/);
+  assert.throws(() => submitGallery(state, { url: video, title: 'Duplicate', kind: 'video' }), /already/);
+  updateMedia(state, { operation: 'review', id: post.id, status: 'approved' });
+  assert.equal(publicState(state).media.gallery.length, 1);
+  assert.equal(publicState(state).media.gallery[0].source, undefined);
 });

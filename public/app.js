@@ -1,4 +1,4 @@
-import { streamCard, galleryContent, mediaAdmin, renderMediaPage } from './media-view.js';
+import { streamCard, galleryContent, gallerySubmissionForm, mediaAdmin, renderMediaPage } from './media-view.js';
 import { pagesMode, remoteApi, watch } from './runtime.js';
 import { prizes, timeline, massTimes, massVenue, venueAddress, venueMapsUrl, about, documents, goodToKnow, ruleSections, matchFormat, formatText, programCoordinators, supportContacts } from './info.js';
 import { groups, centres, centreTypes, idTypes } from './parishes.js';
@@ -54,6 +54,12 @@ const completed = () => state.matches.filter(m => m.status === 'completed' && !m
 const badge = (text, kind = '') => `<span class="badge ${kind}">${esc(text)}</span>`;
 function practiceBanner() { return `<div class="practice-banner"><strong>PRACTICE MODE</strong><span>Rehearsal event for training. Devices opened with the practice link see it; the public site shows the real event.</span><button class="btn tiny" data-action="practice" data-on="false">Exit practice</button></div>`; }
 function galleryPage() { return `<div class="public-wrap">${publicHeader()}<main class="gallery-page">${galleryContent(state)}</main>${footer()}</div>`; }
+function gallerySubmitPage() { return `<div class="public-wrap">${publicHeader()}<main class="gallery-submit-page" data-clarity-mask="true">${gallerySubmissionForm(state)}</main>${footer()}</div>`; }
+function galleryClientId() {
+  const key = 'carromia-gallery-client';
+  try { const saved = localStorage.getItem(key); if (/^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i.test(saved || '')) return saved; const id = crypto.randomUUID(); localStorage.setItem(key, id); return id; }
+  catch { return crypto.randomUUID(); }
+}
 function logo(compact = false) { return `<a class="brand" href="/"><img src="/icon.svg" alt="" width="38" height="38"><span>CARROMIA${compact ? '' : '<small>THE GAME. THE COMMUNITY.</small>'}</span></a>`; }
 async function api(path, data) {
   if (pagesMode) return remoteApi(path, data);
@@ -68,7 +74,7 @@ function busy() {
 }
 // renderPage: true = always redraw; 'auto' = background refresh, redraw only when nobody is mid-input.
 async function sync(renderPage = true) {
-  try { state = await api('state'); offset = state.serverTime - Date.now(); connected = true; if (renderPage === true || (renderPage === 'auto' && !busy() && !['/register', '/admin/settings'].includes(page))) render(); }
+  try { state = await api('state'); offset = state.serverTime - Date.now(); connected = true; if (renderPage === true || (renderPage === 'auto' && !busy() && !['/register', '/gallery/submit', '/admin/settings'].includes(page))) render(); }
   catch (e) { connected = false; if (!state) app.innerHTML = `<div class="error-screen"><h1>Unable to reach the tournament</h1><p>${pagesMode ? 'Check your internet connection and try again.' : 'Make sure the local server is running.'}</p><button class="btn primary" data-action="retry">Try again</button></div>`; }
   updateConnection();
 }
@@ -79,9 +85,10 @@ function render() {
   if (!state) return;
   // Suspend tracking before any private desk content is inserted into the DOM.
   if (state.isAdmin || state.practice || !['/', '/rules', '/register', '/teams', '/results', '/live'].includes(page)) updateAnalytics(page, state, pagesMode);
-  document.title = `CARROMIA ${state.event.year} · ${page.startsWith('/admin') ? 'Tournament desk' : page === '/live' ? 'Live boards' : page === '/register' ? 'Register your team' : page === '/rules' ? 'Rules' : page === '/teams' ? 'Teams' : page === '/results' ? 'Results' : page === '/gallery' ? 'Gallery' : 'Every coin counts'}`;
+  document.title = `CARROMIA ${state.event.year} · ${page.startsWith('/admin') ? 'Tournament desk' : page === '/live' ? 'Live boards' : page === '/register' ? 'Register your team' : page === '/rules' ? 'Rules' : page === '/teams' ? 'Teams' : page === '/results' ? 'Results' : page === '/gallery/submit' ? 'Share a photo or video' : page === '/gallery' ? 'Gallery' : 'Every coin counts'}`;
   if (page.startsWith('/admin') || page === '/checkin' || page === '/lunch') app.innerHTML = state.isAdmin ? desk() : login();
   else if (page === '/live' || page === '/gallery') renderMediaPage(app, `${state.practice ? practiceBanner() : ''}${page === '/live' ? live() : galleryPage()}`);
+  else if (page === '/gallery/submit') app.innerHTML = gallerySubmitPage();
   else if (page === '/register') app.innerHTML = registration();
   else if (page === '/rules') app.innerHTML = rulesPage();
   else if (page === '/results') app.innerHTML = publicResultsPage();
@@ -668,6 +675,7 @@ document.addEventListener('click', async event => {
       await api('media', action === 'media-remove-stream' ? { operation: 'stream', boardId: b.dataset.board, matchId: b.dataset.match, remove: true } : { operation: action === 'gallery-remove' ? 'remove' : 'review', id, status: b.dataset.status });
       toast('Streams & gallery updated.'); await sync(); return;
     }
+    if (action === 'gallery-share-another') { render(); return; }
     if (action === 'close') return modal.close();
     if (action === 'analytics-settings') return analyticsSettingsDialog();
     if (action === 'analytics-allow' || action === 'analytics-deny') {
@@ -772,6 +780,11 @@ document.addEventListener('change', async event => {
 document.addEventListener('submit', async event => {
   event.preventDefault(); const form = event.target, fields = Object.fromEntries(new FormData(form)); const button = $('button[type="submit"], button:not([type])', form), errorEl = $('.form-error', form); if (button) button.disabled = true; if (errorEl) errorEl.textContent = '';
   try {
+    if (form.id === 'gallery-submit-form') {
+      await api('gallery-submit', { ...fields, clientId: galleryClientId() });
+      form.closest('.gallery-submit-card').innerHTML = `<div class="eyebrow">LINK RECEIVED</div><h1>Thank you for sharing.</h1><p>Your photo or video is waiting for review. It will appear on the wall once approved.</p><a class="btn primary" href="${pagesMode ? '#/gallery' : '/gallery'}">View the photo &amp; video wall</a><button class="btn outline" type="button" data-action="gallery-share-another">Share another link</button>`;
+      return;
+    }
     if (['media-settings-form', 'media-match-form', 'gallery-add-form'].includes(form.id) || form.classList.contains('media-stream-form')) {
       const input = form.id === 'media-settings-form' ? { operation: 'settings', streamsEnabled: fields.streamsEnabled === 'on', galleryEnabled: fields.galleryEnabled === 'on' }
         : form.id === 'gallery-add-form' ? { operation: 'add', ...fields }

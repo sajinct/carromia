@@ -179,3 +179,23 @@ test('API persists optional streams and publishes only approved gallery links', 
   assert.equal(res.status, 200); assert.match(res.headers.get('content-security-policy'), /frame-src https:\/\/www.youtube-nocookie.com/);
   assert.equal((await post('media', { operation: 'stream', boardId: 2, url: 'https://malicious.example' }, cookie)).status, 400);
 });
+
+
+test('public API gallery links remain pending until reviewed; QR opens submission form', async t => {
+  const { base, post, login } = await serve(t, 3093), cookie = await login();
+  const input = { url: 'https://instagram.com/p/PUBLIC/', title: 'Public photo', kind: 'photo', status: 'approved', source: 'official' };
+  assert.equal((await post('gallery-submit', input)).status, 400, 'gallery must be enabled');
+  assert.equal((await post('media', { operation: 'settings', galleryEnabled: true }, cookie)).status, 200);
+  assert.equal((await post('gallery-submit', input)).status, 201);
+  let pub = await (await fetch(`${base}/api/state`)).json(); assert.equal(pub.media.gallery.length, 0);
+  const desk = await (await fetch(`${base}/api/state`, { headers: { Cookie: cookie } })).json(), item = desk.media.gallery[0];
+  assert.equal(item.status, 'pending'); assert.equal(item.source, 'public');
+  assert.equal((await post('gallery-submit', input)).status, 400, 'duplicate submission');
+  assert.equal((await post('gallery-submit', { ...input, url: 'javascript:alert(1)' })).status, 400);
+  assert.equal((await post('media', { operation: 'review', id: item.id, status: 'approved' })).status, 401);
+  assert.equal((await post('media', { operation: 'review', id: item.id, status: 'approved' }, cookie)).status, 200);
+  pub = await (await fetch(`${base}/api/state`)).json(); assert.equal(pub.media.gallery[0].id, item.id);
+  const qr = await (await fetch(`${base}/api/link-qr?route=/gallery/submit`)).json();
+  assert.match(qr.qr, /^data:image\/png;base64,/); assert.equal(qr.url, `${base}/gallery/submit`);
+  assert.equal((await fetch(`${base}/gallery/submit`)).status, 200);
+});

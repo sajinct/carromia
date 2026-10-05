@@ -4,7 +4,7 @@ import { join, extname } from 'node:path';
 import { randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
 import QRCode from 'qrcode';
 import { fileStore, supabaseStore, ConflictError } from './lib/store.mjs';
-import { emptyState, addTeams, playerPhotos, paymentProof, teamForm, groupForm, publicTeam, publicState, eligible, fail, actions, refusal, checkBoard, teamsFor, fileRoles, registrationStatus, defaults, shareRoutes, teamFiles, thumbPath, teamFilePath, assetPath, upiQrImage, maxGroupTeams, maxPhotoLength, maxThumbLength, maxScreenshotLength } from './lib/tournament.mjs';
+import { emptyState, addTeams, playerPhotos, paymentProof, teamForm, groupForm, publicTeam, publicState, eligible, fail, actions, refusal, checkBoard, teamsFor, fileRoles, registrationStatus, defaults, shareRoutes, teamFiles, thumbPath, teamFilePath, assetPath, upiQrImage, maxGroupTeams, maxPhotoLength, maxThumbLength, maxScreenshotLength, submitGallery } from './lib/tournament.mjs';
 
 const port = Number(process.env.PORT || 3000);
 const host = process.env.HOST || '127.0.0.1';
@@ -103,6 +103,11 @@ const server = http.createServer(async (req, res) => {
       if (req.headers.origin && req.headers.origin !== `http://${req.headers.host}` && req.headers.origin !== process.env.PUBLIC_URL) return send(res, 403, { error: 'Origin not allowed.' });
       // Registration carries two player photos (each with a thumbnail) and a payment screenshot.
       const input = await body(req, { '/api/register': registerLimit, '/api/upi-qr': 7100000, '/api/settings': 300000 }[url.pathname] ?? 20000);
+      if (url.pathname === '/api/gallery-submit') {
+        if (limited(`gallery:${req.socket.remoteAddress}`, 8, 600000)) return send(res, 429, { error: 'Too many links from this connection. Try again in 10 minutes.' });
+        await change(() => submitGallery(state, input));
+        return send(res, 201, { ok: true });
+      }
       if (url.pathname === '/api/login') {
         const key = `login:${req.socket.remoteAddress}`;
         if (limited(key, 10, 60000)) return send(res, 429, { error: 'Too many attempts. Try again in a minute.' });

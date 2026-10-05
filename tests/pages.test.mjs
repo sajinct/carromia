@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { readFileSync, existsSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { seedDemo, publicState, addTeams, teamForm, groupForm, thumbPath } from '../lib/tournament.mjs';
+import { seedDemo, publicState, addTeams, teamForm, groupForm, thumbPath, submitGallery } from '../lib/tournament.mjs';
 import { centre, player, photo } from './registration-fixture.mjs';
 const root = join(import.meta.dirname, '..');
 // The registration Edge Function runs against the same stand-in, with the service key.
@@ -58,6 +58,16 @@ function fakeSupabase() {
     if (/^\/storage\/v1\/object\/[\w-]+$/.test(url.pathname) && init.method === 'DELETE') { if (!service) return reply(403, {}); for (const name of body.prefixes) db.files.delete(`${url.pathname.split('/').pop()}/${name}`); return reply(200, []); }
     if (['/rest/v1/rpc/register_teams', '/rest/v1/rpc/team_form', '/rest/v1/rpc/group_form', '/rest/v1/rpc/unreferenced_files'].includes(url.pathname) && !service) return reply(404, { message: 'Could not find the function in the schema cache' });
     switch (url.pathname) {
+      case '/rest/v1/rpc/submit_gallery_link': {
+        assert.equal(init.headers.Authorization, undefined, 'public submission does not require an official login');
+        try {
+          const row = db.rows[body.p_event];
+          if (!row) throw new Error('The photo & video wall is not accepting links right now.');
+          submitGallery(row.state, { url: body.p_url, title: body.p_title, kind: body.p_kind });
+          row.version++; db.pub[body.p_event] = { version: row.version, state: publicState(row.state) };
+          return reply(200, { ok: true });
+        } catch (error) { return reply(400, { message: error.message }); }
+      }
       case '/rest/v1/rpc/server_time': return reply(200, Date.now());
       case '/rest/v1/tournament_public': {
         // The screens' version check asks for its event and the real one: id=in.(main,practice).
@@ -437,4 +447,33 @@ test('Pages media managers run assigned streams and share gallery approval witho
   await remoteApi('media', { operation: 'stream', boardId: 2, url: 'https://youtu.be/M7lc1UVf-VE', enabled: true });
   await remoteApi('media', { operation: 'remove', id });
   assert.equal(db.public.state.media.gallery.length, 0);
+});
+
+
+test('public Pages gallery submissions enter approval queue and QR links reach the same event', async t => {
+  const db = fakeSupabase(), memory = new Map(), realFetch = globalThis.fetch;
+  db.rows.main.state.media = { streamsEnabled: false, galleryEnabled: true, gallery: [], streams: [] };
+  db.pub.main.state = publicState(db.rows.main.state);
+  globalThis.localStorage = { getItem: key => memory.get(key) ?? null, setItem: (key, value) => memory.set(key, value), removeItem: key => memory.delete(key) };
+  globalThis.fetch = db.fetch; globalThis.location = { origin: 'https://sajinct.github.io', pathname: '/carromia/', search: '' };
+  t.after(() => { globalThis.fetch = realFetch; delete globalThis.localStorage; delete globalThis.location; });
+  const { remoteApi, shareLink } = await import('../dist/runtime.js');
+  const input = { url: 'https://youtu.be/M7lc1UVf-VE', title: 'Opening match', kind: 'video', clientId: '11111111-1111-1111-1111-111111111111', status: 'approved' };
+  assert.equal(shareLink('/gallery/submit'), 'https://sajinct.github.io/carromia/#/gallery/submit');
+  await remoteApi('gallery-submit', input);
+  assert.equal(db.rows.main.state.media.gallery[0].status, 'pending');
+  assert.equal(db.rows.main.state.media.gallery[0].source, 'public');
+  assert.equal((await remoteApi('state')).media.gallery.length, 0);
+  await assert.rejects(remoteApi('gallery-submit', input), /already/);
+  await assert.rejects(remoteApi('gallery-submit', { ...input, url: 'https://malicious.example' }), /supported/);
+  await remoteApi('login', { email: 'asha@example.org', password: 'admin-pass' });
+  const id = db.rows.main.state.media.gallery[0].id;
+  await remoteApi('media', { operation: 'review', id, status: 'approved' }); await remoteApi('logout');
+  assert.equal((await remoteApi('state')).media.gallery[0].id, id);
+  db.rows.practice = { version: 1, state: structuredClone(db.rows.main.state) };
+  db.rows.practice.state.media.gallery = []; db.pub.practice = { version: 1, state: publicState(db.rows.practice.state) };
+  await remoteApi('practice', { on: true });
+  assert.equal(shareLink('/gallery/submit'), 'https://sajinct.github.io/carromia/?practice=1#/gallery/submit');
+  await remoteApi('gallery-submit', { ...input, url: 'https://instagram.com/p/PRACTICE/', kind: 'photo' });
+  assert.equal(db.rows.practice.state.media.gallery.length, 1); assert.equal(db.rows.main.state.media.gallery.length, 1);
 });

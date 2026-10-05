@@ -10,6 +10,15 @@
 .gallery-page { width: min(1180px, 100%); margin: auto; padding: 40px 24px 64px; }
 .gallery-intro { margin-bottom: 32px; }
 .gallery-intro h1 { font-size: clamp(30px, 5vw, 54px); }
+.gallery-submit-invite { display: flex; justify-content: space-between; align-items: center; gap: 24px; padding: 24px; margin-bottom: 32px; }
+.gallery-submit-invite h2 { font-size: 22px; }
+.gallery-submit-qr { display: grid; justify-items: center; gap: 8px; color: inherit; text-decoration: none; flex: 0 0 160px; }
+.gallery-submit-qr[hidden] { display: none; }
+.gallery-submit-qr code { font-size: 10px; max-width: 180px; overflow-wrap: anywhere; text-align: center; }
+.gallery-submit-qr img { background: white; border-radius: 8px; }
+.gallery-submit-page { max-width: 680px; margin: 40px auto 64px; }
+.gallery-submit-card form { display: grid; gap: 16px; margin: 24px 0; }
+.gallery-submit-card > .btn { margin: 8px 8px 8px 0; }
 .gallery-item { min-width: 0; padding: 24px; }
 .gallery-item h2 { font-size: 20px; overflow-wrap: anywhere; }
 .social-embed { display: block; width: 100%; border: 0; background: #f3f5f2; margin: 16px 0; border-radius: 12px; }
@@ -24,4 +33,7 @@
   .gallery-review { align-items: flex-start; flex-direction: column; }
   .gallery-page { padding: 24px 16px 48px; }
   .gallery-item { padding: 16px; }
+  .gallery-submit-invite { align-items: flex-start; flex-direction: column; padding: 20px; }
+  .gallery-submit-qr { flex: auto; }
+  .gallery-submit-page { margin-top: 24px; }
 }

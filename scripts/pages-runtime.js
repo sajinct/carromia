@@ -5,7 +5,7 @@
 // separate 'practice' event instead, so a TV, phones and the desk can rehearse the full flow
 // without touching the real event. It stays on until "Exit practice", or until an admin turns
 // practice mode off for everyone (practiceOff on the real event), which sends every device back.
-import { emptyState, eligible, fail, freshEvent, publicState, practiceEvent, actions, refusal, checkBoard, teamsFor, fileRoles, registrationStatus, defaults, playerPhotos, paymentProof, shareRoutes, thumbPath, upiQrImage } from './tournament-browser.js';
+import { emptyState, eligible, fail, freshEvent, publicState, practiceEvent, actions, refusal, checkBoard, teamsFor, fileRoles, registrationStatus, defaults, playerPhotos, paymentProof, shareRoutes, thumbPath, upiQrImage, gallerySubmissionInput } from './tournament-browser.js';
 import { findCentre } from './parishes.js';
 
 export const pagesMode = true;
@@ -173,6 +173,10 @@ export async function remoteApi(path, input = {}) {
   await syncClock();
   if (path === 'login') return signIn(input);
   if (path === 'change-password') return changePassword(input);
+  if (path === 'gallery-submit') {
+    const fields = gallerySubmissionInput(input);
+    return request('/rest/v1/rpc/submit_gallery_link', { method: 'POST', body: { p_event: eventId(), p_url: fields.url, p_title: fields.title, p_kind: fields.kind, p_client_id: input.clientId } });
+  }
   // A team's registration form, for whoever knows its primary player's or parish coordinator's
   // mobile number, or every form in a group for the coordinator; the database checks the number and
   // counts wrong tries.

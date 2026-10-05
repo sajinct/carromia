@@ -881,3 +881,10 @@ An admin opens **Officials**, adds or edits a person, selects **Media: assigned 
 - **Display settings:** admins turn the live stream display and public gallery on or off.
 
 Media managers cannot operate match scores, check-in, payments, settings or other accounts. Reassigning their boards takes effect on their next action.
+
+
+### Collecting photos and videos from visitors
+
+With the gallery enabled, visitors open **Photo & video wall** and tap **Share a photo or video**, or scan the **Scan to share** QR code. They enter a caption, choose Photo or Video and paste a public social media post link. Signing in is not required. The confirmation tells them their link is waiting for review.
+
+Admins and media managers find these links in **Streams & gallery → Gallery approvals**, labelled **Public submission**. Use **Review original**, then **Approve** to show the item on the common wall. **Reject** or **Remove** keeps unsuitable content off the wall. No gallery item is tied to a board. Disabling the public gallery also closes the submission form.

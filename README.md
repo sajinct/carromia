@@ -195,3 +195,12 @@ In **Officials**, add or edit an account, choose **Media: assigned streams & sha
 The gallery is common to the whole event: every media manager can add links and approve, hide, reject or remove any gallery item. Gallery items have no board association. Global stream/gallery display switches remain with admins. Media accounts cannot check in teams, score matches, change the draw or settings, manage officials, download backups, or open private player photos/payment screenshots. Board reassignment takes effect before the next action; the database enforces permissions even if a browser submits a crafted write.
 
 To create a media account through the command line: `npm run add-official -- media@example.org "Media Manager" media 1,3`.
+
+
+### Public photo/video link submissions
+
+Apply `supabase/migrations/20261013000000_carromia_public_gallery.sql` after the media-role migration. No Edge Function changes are needed. The wall includes **Share a photo or video** and a scannable QR code linking to `/gallery/submit` (`#/gallery/submit` on Pages). Visitors can submit a caption, media type and public YouTube, Facebook or Instagram link without signing in.
+
+Every submission enters the existing common gallery as **pending**, labelled **Public submission** in the desk. Admins and media managers review and approve it in **Streams & gallery**. The public database copy omits it until approved; the public endpoint cannot change approval status, streams or match data. Duplicate links are rejected, the gallery holds at most 200 links, and the hosted endpoint allows up to eight submissions per browser in ten minutes (the local server limits by connection). Browser identifiers contain no contact details.
+
+Sharing closes when the admin disables the public gallery. Practice QR codes and submissions use the practice event, separate from the real wall.
