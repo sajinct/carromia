@@ -55,7 +55,7 @@ async function sendFile(res, bucket, path, cache) {
   const file = await store.readFile(bucket, path); if (!file) return send(res, 404, { error: 'File not found.' });
   res.writeHead(200, { 'Content-Type': file.type, 'Cache-Control': cache }); res.end(file.bytes);
 }
-const types = { '.html': 'text/html', '.css': 'text/css', '.js': 'text/javascript', '.svg': 'image/svg+xml', '.webmanifest': 'application/manifest+json', '.png': 'image/png', '.webp': 'image/webp' };
+const types = { '.html': 'text/html', '.css': 'text/css', '.js': 'text/javascript', '.svg': 'image/svg+xml', '.webmanifest': 'application/manifest+json', '.png': 'image/png', '.webp': 'image/webp', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg' };
 const server = http.createServer(async (req, res) => {
   res.setHeader('X-Content-Type-Options', 'nosniff'); res.setHeader('Referrer-Policy', 'no-referrer');
   res.setHeader('Content-Security-Policy', "default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; connect-src 'self'; frame-src https://www.youtube-nocookie.com https://www.facebook.com https://www.instagram.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self'");
