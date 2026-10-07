@@ -573,6 +573,13 @@ function formCell(t) {
   if (t.status === 'pending') return '<small class="muted">After payment</small>';
   return `<span class="row-actions"><button class="btn tiny outline" data-action="team-form" data-id="${t.id}" aria-label="Download the registration form for ${esc(t.name)}">${icon('download')}PDF</button><a class="btn tiny outline" href="${esc(whatsappLink(t))}" target="_blank" rel="noopener" aria-label="Send ${esc(t.name)} its form link on WhatsApp">WhatsApp</a></span>`;
 }
+function showRegistrationConfirmation(form, html) {
+  const card = form.closest('.form-card');
+  card.innerHTML = html;
+  card.tabIndex = -1;
+  card.focus({ preventScroll: true });
+  card.scrollIntoView({ behavior: 'instant', block: 'start' });
+}
 // A group registration's confirmation: every team's ID, and all their forms in one PDF, or a
 // note that the desk is checking the one payment.
 async function groupConfirmation(teams, thumbs) {
@@ -842,12 +849,12 @@ document.addEventListener('submit', async event => {
       const reply = await api('register', { forane: fields.forane, parish: parish.join('|'), centreType, adults: fields.adults === 'on', teams: entries.map(e => e.team), coordinator, payment });
       const registered = reply.teams || [reply.team];
       trackAnalyticsEvent('registration_complete');
-      if (registered.length > 1) { form.closest('.form-card').innerHTML = await groupConfirmation(registered, entries.map(e => e.thumbs)); return; }
+      if (registered.length > 1) { showRegistrationConfirmation(form, await groupConfirmation(registered, entries.map(e => e.thumbs))); return; }
       const [t] = registered, { thumbs } = entries[0];
-      if (t.status === 'pending') { form.closest('.form-card').innerHTML = pendingConfirmation(t); return; }
+      if (t.status === 'pending') { showRegistrationConfirmation(form, pendingConfirmation(t)); return; }
       let qr = ''; try { qr = (await api(`qr?token=${t.checkinToken}`)).qr; } catch {}
       lastRegistration = { team: t, qr, photos: thumbs, lunchQr: await lunchQrFor(t) };
-      form.closest('.form-card').innerHTML = `<div class="confirmation"><span class="success-icon">${icon('check')}</span><div class="eyebrow">YOU’RE ON THE TEAM SHEET</div><h2>See you at the board.</h2><p>${esc(t.name)} is registered.</p><strong class="confirmation-id">${t.id}</strong><p>${t.players.map(p => esc(p.name)).join(' & ')}<br><small>${esc(t.parish)} · ${esc(t.forane)}</small></p>${qr ? `<img class="qr" src="${qr}" width="220" height="220" alt="Check-in QR code for ${t.id}">` : ''}<p class="form-note">Save your team ID${qr ? ' and QR code' : ''} for check-in at the tournament desk. Reporting time is 9:45 AM.</p><button class="btn primary" type="button" data-action="registration-pdf">${icon('download')} Download registration form (PDF)</button><div class="notice confirmation-notes"><strong>Entry fee ${money(state.event.entryFee)} per team${t.lunch ? ` · lunch booked for ${t.lunch === 2 ? 'both players' : '1 player'}` : ''}</strong><span>Print the registration form. Both players sign it, and your Parish Priest attests it with the parish seal. The rules are included.</span>${lunchOn() && t.lunch ? `<span>Tear off the lunch coupon${t.lunch > 1 ? 's' : ''} at the bottom of the form and bring ${t.lunch > 1 ? 'them' : 'it'} to the lunch counter, where ${t.lunch > 1 ? 'each is' : 'it is'} scanned.</span>` : ''}<span>Bring on the day:</span><ol>${documents.map(line => `<li>${importantText(line)}</li>`).join('')}</ol></div>${qr ? `<a class="btn outline" href="${qr}" download="${t.id}-checkin.png">${icon('download')} Save QR code</a>` : ''}<a class="btn outline" href="/live">View live boards ${icon('arrow')}</a></div>`; return;
+      showRegistrationConfirmation(form, `<div class="confirmation"><span class="success-icon">${icon('check')}</span><div class="eyebrow">YOU’RE ON THE TEAM SHEET</div><h2>See you at the board.</h2><p>${esc(t.name)} is registered.</p><strong class="confirmation-id">${t.id}</strong><p>${t.players.map(p => esc(p.name)).join(' & ')}<br><small>${esc(t.parish)} · ${esc(t.forane)}</small></p>${qr ? `<img class="qr" src="${qr}" width="220" height="220" alt="Check-in QR code for ${t.id}">` : ''}<p class="form-note">Save your team ID${qr ? ' and QR code' : ''} for check-in at the tournament desk. Reporting time is 9:45 AM.</p><button class="btn primary" type="button" data-action="registration-pdf">${icon('download')} Download registration form (PDF)</button><div class="notice confirmation-notes"><strong>Entry fee ${money(state.event.entryFee)} per team${t.lunch ? ` · lunch booked for ${t.lunch === 2 ? 'both players' : '1 player'}` : ''}</strong><span>Print the registration form. Both players sign it, and your Parish Priest attests it with the parish seal. The rules are included.</span>${lunchOn() && t.lunch ? `<span>Tear off the lunch coupon${t.lunch > 1 ? 's' : ''} at the bottom of the form and bring ${t.lunch > 1 ? 'them' : 'it'} to the lunch counter, where ${t.lunch > 1 ? 'each is' : 'it is'} scanned.</span>` : ''}<span>Bring on the day:</span><ol>${documents.map(line => `<li>${importantText(line)}</li>`).join('')}</ol></div>${qr ? `<a class="btn outline" href="${qr}" download="${t.id}-checkin.png">${icon('download')} Save QR code</a>` : ''}<a class="btn outline" href="/live">View live boards ${icon('arrow')}</a></div>`); return;
     }
     if (form.getAttribute('id') === 'assign-form') await api('assign', fields);
     if (form.getAttribute('id') === 'walkover-form') { await api('walkover', { id: form.dataset.id, ...fields }); toast('Walkover recorded. The team advances.'); }
