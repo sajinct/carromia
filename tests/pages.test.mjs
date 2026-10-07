@@ -4,11 +4,13 @@ import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { readFileSync, existsSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { seedDemo, publicState, addTeams, teamForm, groupForm, thumbPath, submitGallery } from '../lib/tournament.mjs';
 import { centre, player, photo } from './registration-fixture.mjs';
 const root = join(import.meta.dirname, '..');
 // The registration Edge Function runs against the same stand-in, with the service key.
-const functionSource = readFileSync(join(root, 'supabase', 'functions', 'registration', 'index.ts'), 'utf8');
+const emailUrl = pathToFileURL(join(root, 'supabase', 'functions', 'registration', 'email.mjs')).href;
+const functionSource = readFileSync(join(root, 'supabase', 'functions', 'registration', 'index.ts'), 'utf8').replace("'./email.mjs'", JSON.stringify(emailUrl));
 const { handle: registrationFunction } = await import(`data:text/javascript,${encodeURIComponent(functionSource)}`);
 const SUPABASE = 'https://vzxcqpgwvknonkhjinuk.supabase.co', PUBLISHABLE = 'sb_publishable_HdgK5UXMha3bvF5mk7o1Yw_eMN6h_Ro', SERVICE = 'sb_secret_test';
 test('Pages build is portable to a repository subpath and contains only static assets', async () => {
@@ -78,7 +80,10 @@ function fakeSupabase() {
       case '/rest/v1/rpc/tournament_versions':
         if (!db.announces) return reply(404, { message: 'Could not find the function public.tournament_versions in the schema cache' });
         return reply(200, body.p_ids.filter(i => db.pub[i]).map(i => ({ id: i, version: db.pub[i].version, practiceOff: db.pub[i].state.event?.practiceOff ?? false, announced: true })));
-      case '/rest/v1/tournament': return reply(200, caller?.official && db.rows[id] ? [structuredClone(db.rows[id])] : []);
+      case '/rest/v1/tournament': {
+        const row = (service || caller?.official) && db.rows[id];
+        return reply(200, row ? [url.searchParams.get('select') === 'event:state->event' ? { event: structuredClone(row.state.event) } : structuredClone(row)] : []);
+      }
       case '/rest/v1/officials': { const who = service ? Object.values(users).find(u => u.id === eq('user_id')) : caller; return reply(200, who ? [who.official] : []); }
       case '/rest/v1/player_photos': return reply(200, ['admin', 'official', 'checkin'].includes(caller?.official.role) ? db.photos.filter(p => p.event === eq('event') && (!eq('team_id') || p.team_id === eq('team_id')) && (!eq('player') || p.player === Number(eq('player')))) : []);
       case '/rest/v1/payment_proofs': return reply(200, ['admin', 'official'].includes(caller?.official.role) ? db.proofs.filter(p => p.event === eq('event')) : []);

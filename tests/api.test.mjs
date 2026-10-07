@@ -50,6 +50,10 @@ test('API protects the desk, persists registration, produces QR, and omits priva
   assert.equal((await fetch(`${base}/api/upi-payment-qr?uri=${encodeURIComponent('upi://pay?pa=parish@okaxis&pn=CARROMIA2026&am=NaN&cu=INR')}`)).status, 400);
   assert.equal(JSON.parse(readFileSync(join(data, 'tournament.json'), 'utf8')).teams.length, 1);
   const login = await post('login', { password: 'test-password' }); assert.equal(login.status, 200); const cookie = login.headers.get('set-cookie').split(';')[0];
+  const alerts = { enabled: false, recipients: ['desk@example.org', 'committee@example.org'] };
+  assert.equal((await post('settings', { resetMinutes: 5, restMinutes: 0, registrationOpen: true, registrationDeadline: '', registrationAlerts: alerts }, cookie)).status, 200);
+  assert.equal((await (await fetch(`${base}/api/state`)).json()).event.registrationAlerts, undefined, 'alert addresses stay out of the public API');
+  assert.deepEqual((await (await fetch(`${base}/api/state`, { headers: { Cookie: cookie } })).json()).event.registrationAlerts, alerts, 'the desk retains the recipient list');
   assert.equal((await post('checkin', { token: team.checkinToken }, cookie)).status, 200);
   const adminState = await (await fetch(`${base}/api/state`, { headers: { Cookie: cookie } })).json(); assert.equal(adminState.teams[0].checkedIn, true); assert.equal(adminState.teams[0].players[0].mobile, '9111111111'); assert.equal(adminState.teams[0].lunch, 2);
   assert.equal(adminState.teams[0].players[0].idType, 'Aadhaar'); assert.equal(adminState.teams[0].checkinToken, team.checkinToken, 'the desk can print a team’s form again');

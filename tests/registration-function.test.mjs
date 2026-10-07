@@ -2,10 +2,12 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { photo } from './registration-fixture.mjs';
 
 // The Edge Function is plain JavaScript in a .ts file (so it pastes into the Supabase editor).
-const source = readFileSync(join(import.meta.dirname, '..', 'supabase', 'functions', 'registration', 'index.ts'), 'utf8');
+const emailUrl = pathToFileURL(join(import.meta.dirname, '..', 'supabase', 'functions', 'registration', 'email.mjs')).href;
+const source = readFileSync(join(import.meta.dirname, '..', 'supabase', 'functions', 'registration', 'index.ts'), 'utf8').replace("'./email.mjs'", JSON.stringify(emailUrl));
 const { handle } = await import(`data:text/javascript,${encodeURIComponent(source)}`);
 
 // A stand-in for Storage, the two RPCs the function calls, Auth and the officials table.
@@ -24,6 +26,7 @@ function fakeSupabase() {
     if (url.pathname === '/rest/v1/rpc/unreferenced_files') return reply(200, db.unreferenced);
     if (url.pathname === '/auth/v1/user') return { 'token-official': reply(200, { id: 'u1' }), 'token-guest': reply(200, { id: 'u9' }) }[init.headers.Authorization?.replace('Bearer ', '')] ?? reply(401, { msg: 'invalid JWT' });
     if (url.pathname === '/rest/v1/officials') return reply(200, url.searchParams.get('user_id') === 'eq.u1' ? [{ role: 'official' }] : []);
+    if (url.pathname === '/rest/v1/tournament') return reply(200, [{ event: {} }]);
     return reply(404, { message: 'not mocked' });
   };
   return db;
@@ -98,4 +101,44 @@ test('registration function: uploads checked pictures, cleans up after a refused
   res = await call({ action: 'sweep' }, 'token-official');
   assert.deepEqual([res.status, res.body.deleted, db.files.size], [200, 1, 0]);
   assert.equal((await call({ action: 'nope' })).status, 400);
+});
+
+test('registration emails use saved settings after commit, never visitor-supplied recipients', async () => {
+  const db = fakeSupabase(), emails = [], background = [];
+  let providerStatus = 200;
+  const fetchImpl = async (href, init) => {
+    if (href === 'https://api.resend.com/emails') {
+      assert.equal(db.rpc.length > 0, true, 'database registration completed first');
+      emails.push(JSON.parse(init.body));
+      return new Response('{}', { status: providerStatus });
+    }
+    if (new URL(href).pathname === '/rest/v1/tournament') {
+      assert.equal(init.headers.apikey, 'sb_secret_test');
+      return new Response(JSON.stringify([{ event: { registrationAlerts: { enabled: true, recipients: ['desk@example.org', 'committee@example.org'] } } }]));
+    }
+    return db.fetch(href, init);
+  };
+  const env = { url: 'https://example.supabase.co', key: 'sb_secret_test', email: { apiKey: 're_test', from: 'alerts@example.org' }, waitUntil: promise => background.push(promise) };
+  const players = [{ name: 'A', photo, thumb: photo }, { name: 'B', photo, thumb: photo }];
+  const entry = { action: 'register', p_name: 'Team', p_players: players, registrationAlerts: { enabled: true, recipients: ['attacker@example.org'] } };
+  const call = body => handle(new Request('https://x', { method: 'POST', body: JSON.stringify(body) }), env, fetchImpl);
+  let res = await call(entry);
+  assert.equal(res.status, 200);
+  await Promise.all(background);
+  assert.deepEqual(emails[0].to, ['desk@example.org', 'committee@example.org']);
+  assert.equal(db.files.size, 4);
+  providerStatus = 401;
+  res = await call(entry);
+  assert.equal(res.status, 200, 'email rejection does not fail a committed registration');
+  await Promise.all(background);
+  assert.equal(db.files.size, 8, 'email rejection never removes saved player files');
+  const count = emails.length;
+  await call({ ...entry, p_event: 'practice' });
+  await Promise.all(background);
+  assert.equal(emails.length, count, 'practice sends no email');
+  db.registerError = 'Registration closed.';
+  res = await call(entry);
+  assert.equal(res.status, 400);
+  await Promise.all(background);
+  assert.equal(emails.length, count, 'a refused registration sends no email');
 });

@@ -5,7 +5,7 @@
 // separate 'practice' event instead, so a TV, phones and the desk can rehearse the full flow
 // without touching the real event. It stays on until "Exit practice", or until an admin turns
 // practice mode off for everyone (practiceOff on the real event), which sends every device back.
-import { emptyState, eligible, fail, freshEvent, publicState, practiceEvent, actions, refusal, checkBoard, teamsFor, fileRoles, registrationStatus, defaults, playerPhotos, paymentProof, shareRoutes, thumbPath, upiQrImage, gallerySubmissionInput } from './tournament-browser.js';
+import { emptyState, eligible, fail, freshEvent, publicState, publicEvent, practiceEvent, actions, refusal, checkBoard, teamsFor, fileRoles, registrationStatus, defaults, playerPhotos, paymentProof, shareRoutes, thumbPath, upiQrImage, gallerySubmissionInput } from './tournament-browser.js';
 import { findCentre } from './parishes.js';
 
 export const pagesMode = true;
@@ -151,7 +151,7 @@ async function view(user) {
   if (user) user = await profile(user);
   const { state } = await load(user), practice = eventId() === 'practice';
   const teams = user ? teamsFor(state.teams, user.role) : state.teams;
-  return { ...state, event: { ...defaults, ...state.event }, practice, practiceAvailable: !state.event.practiceOff && (Boolean(user) || practice), practiceLinks: practice ? { live: practiceLink('/live'), register: practiceLink('/register'), desk: practiceLink('/admin') } : null, teams, activity: user ? state.activity : [], matches: state.matches.map(m => ({ ...m, blockedReason: eligible(state, m, now()) })), registration: registrationStatus({ ...state, practice }, now()), isAdmin: Boolean(user), user: user && { name: user.name, role: user.role, boards: user.boards || [] }, authMode: 'supabase', localDemo: false, serverTime: now() };
+  return { ...(user ? state : publicState(state)), event: { ...defaults, ...(user ? state.event : publicEvent(state.event)) }, practice, practiceAvailable: !state.event.practiceOff && (Boolean(user) || practice), practiceLinks: practice ? { live: practiceLink('/live'), register: practiceLink('/register'), desk: practiceLink('/admin') } : null, teams, activity: user ? state.activity : [], matches: state.matches.map(m => ({ ...m, blockedReason: eligible(state, m, now()) })), registration: registrationStatus({ ...state, practice }, now()), isAdmin: Boolean(user), user: user && { name: user.name, role: user.role, boards: user.boards || [] }, authMode: 'supabase', localDemo: false, serverTime: now() };
 }
 
 // Officials are managed by the 'officials' Edge Function (supabase/functions/officials), which holds

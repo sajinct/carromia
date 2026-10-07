@@ -3,8 +3,9 @@ import { readFileSync, existsSync } from 'node:fs';
 import { join, extname } from 'node:path';
 import { randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
 import QRCode from 'qrcode';
+import { registrationEmailConfig, sendRegistrationEmail } from './supabase/functions/registration/email.mjs';
 import { fileStore, supabaseStore, ConflictError } from './lib/store.mjs';
-import { emptyState, addTeams, playerPhotos, paymentProof, teamForm, groupForm, publicTeam, publicState, eligible, fail, actions, refusal, checkBoard, teamsFor, fileRoles, registrationStatus, defaults, shareRoutes, teamFiles, thumbPath, teamFilePath, assetPath, upiQrImage, maxGroupTeams, maxPhotoLength, maxThumbLength, maxScreenshotLength, submitGallery } from './lib/tournament.mjs';
+import { emptyState, addTeams, playerPhotos, paymentProof, teamForm, groupForm, publicTeam, publicState, publicEvent, eligible, fail, actions, refusal, checkBoard, teamsFor, fileRoles, registrationStatus, defaults, shareRoutes, teamFiles, thumbPath, teamFilePath, assetPath, upiQrImage, maxGroupTeams, maxPhotoLength, maxThumbLength, maxScreenshotLength, submitGallery } from './lib/tournament.mjs';
 
 const port = Number(process.env.PORT || 3000);
 const host = process.env.HOST || '127.0.0.1';
@@ -42,7 +43,7 @@ function send(res, status, value) { res.writeHead(status, { 'Content-Type': 'app
 async function body(req, limit = 20000) { let text = ''; for await (const chunk of req) { text += chunk; if (text.length > limit) throw new Error('Request too large.'); } return JSON.parse(text || '{}'); }
 function view(user) {
   const isAdmin = Boolean(user);
-  return { ...(isAdmin ? state : publicState(state)), event: { ...defaults, ...state.event }, teams: isAdmin ? teamsFor(state.teams, user.role) : state.teams.map(publicTeam), activity: isAdmin ? state.activity : [], matches: state.matches.map(m => ({ ...m, blockedReason: eligible(state, m) })), registration: registrationStatus(state), isAdmin, user: user && { name: user.name, role: user.role, boards: user.boards || [] }, authMode: supabase ? 'supabase' : 'password', localDemo: !supabase && !process.env.ADMIN_PASSWORD, serverTime: Date.now() };
+  return { ...(isAdmin ? state : publicState(state)), event: { ...defaults, ...(isAdmin ? state.event : publicEvent(state.event)) }, teams: isAdmin ? teamsFor(state.teams, user.role) : state.teams.map(publicTeam), activity: isAdmin ? state.activity : [], matches: state.matches.map(m => ({ ...m, blockedReason: eligible(state, m) })), registration: registrationStatus(state), isAdmin, user: user && { name: user.name, role: user.role, boards: user.boards || [] }, authMode: supabase ? 'supabase' : 'password', localDemo: !supabase && !process.env.ADMIN_PASSWORD, serverTime: Date.now() };
 }
 // Pictures arrive as data URLs and are stored as files; the desk reads them through /api/files.
 // A team's QR code: the check-in desk's, or the lunch counter's on its lunch coupons.
@@ -134,6 +135,7 @@ const server = http.createServer(async (req, res) => {
         for (const [j, team] of teams.entries()) await store.savePhotos(team.id, folders[j].photos);
         if (proof && teams[0].status === 'pending') { await store.saveFile('team-files', folders[0].payment, bytes(proof), 'image/jpeg'); for (const team of teams) await store.savePaymentProof(team.id, folders[0].payment); }
         for (const team of teams) store.audit({ actor_name: 'Public registration', action: 'register', detail: { team: team.id, name: team.name, ...(team.group ? { group: team.group.id } : {}) } });
+        void sendRegistrationEmail(teams, 'main', structuredClone(state.event.registrationAlerts), registrationEmailConfig(name => process.env[name]));
         return send(res, 201, { teams, team: teams[0] });
       }
       // A team's registration form, for whoever knows its primary player's or parish coordinator's

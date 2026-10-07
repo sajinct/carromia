@@ -11,8 +11,10 @@
 // * group-form: the same for every team in a group registration, for the parish coordinator.
 // * sweep: for a signed-in official, deletes files nothing points at any more (unreferenced_files()).
 // Deploy: Dashboard -> Edge Functions -> Deploy a new function -> Via editor, name "registration",
-// paste this file, and turn off "Enforce JWT verification" (visitors registering are not signed in).
+// paste this file, add email.mjs alongside it, and turn off "Enforce JWT verification".
 // Plain JavaScript on purpose, so it can be pasted into the dashboard editor and tested in Node.
+
+import { registrationEmailConfig, sendRegistrationEmail } from './email.mjs';
 
 const cors = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'authorization, apikey, content-type, x-client-info', 'Access-Control-Allow-Methods': 'POST, OPTIONS' };
 // Mirrors maxPhotoLength and maxThumbLength in lib/tournament.mjs (a 4 MB picture as a data URL).
@@ -65,6 +67,7 @@ export async function handle(req, env, fetchImpl = fetch) {
         entries.forEach((t, j) => t.players.forEach((p, i) => files.push([`${folders[j]}/player-${i + 1}.jpg`, jpegBytes(p?.photo, maxPhoto, photoMessage)], [`${folders[j]}/player-${i + 1}-thumb.jpg`, jpegBytes(p?.thumb, maxThumb, photoMessage)])));
         const shot = input.p_payment?.screenshot ? jpegBytes(input.p_payment.screenshot, maxPhoto, shotMessage) : null;
         if (shot) files.push([`${folders[0]}/payment.jpg`, shot]);
+        let teams;
         try {
           await Promise.all(files.map(([path, bytes]) => call(`/storage/v1/object/team-files/${path}`, { method: 'POST', bytes })));
           const body = {
@@ -72,12 +75,26 @@ export async function handle(req, env, fetchImpl = fetch) {
             p_teams: entries.map((t, j) => ({ name: t.name, primaryContact: t.primaryContact, lunch: t.lunch, players: t.players.map((p, i) => ({ name: p?.name, mobile: p?.mobile, idType: p?.idType, idLast4: p?.idLast4, photo: `${folders[j]}/player-${i + 1}.jpg` })) })),
             p_payment: input.p_payment ? { txnRef: String(input.p_payment.txnRef ?? ''), screenshot: shot ? `${folders[0]}/payment.jpg` : '' } : null
           };
-          const { teams } = await call('/rest/v1/rpc/register_teams', { method: 'POST', body });
-          return reply(200, { teams, team: teams[0] });
+          ({ teams } = await call('/rest/v1/rpc/register_teams', { method: 'POST', body }));
         } catch (error) {
           await remove(files.map(([path]) => path)).catch(() => {});
           throw error;
         }
+        if (event === 'main') {
+          // Read recipients from the saved event, never from the visitor's request. Keep this
+          // outside the cleanup block: registration has already committed at this point.
+          const notification = (async () => {
+            try {
+              const [row] = await call('/rest/v1/tournament?id=eq.main&select=event:state->event');
+              await sendRegistrationEmail(teams, event, row?.event?.registrationAlerts, env.email, fetchImpl);
+            } catch { console.error('Registration email not sent: unable to read saved alert settings.'); }
+          })();
+          try {
+            if (env.waitUntil) env.waitUntil(notification);
+            else await notification;
+          } catch { console.error('Registration email background task could not be scheduled.'); }
+        }
+        return reply(200, { teams, team: teams[0] });
       }
       case 'team-form': {
         const form = await call('/rest/v1/rpc/team_form', { method: 'POST', body: { p_event: event, p_team_id: String(input.id ?? ''), p_mobile: String(input.mobile ?? '') } });
@@ -116,4 +133,8 @@ export async function handle(req, env, fetchImpl = fetch) {
   }
 }
 
-if (typeof Deno !== 'undefined') Deno.serve(req => handle(req, { url: Deno.env.get('SUPABASE_URL'), key: Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') }));
+if (typeof Deno !== 'undefined') Deno.serve(req => handle(req, {
+  url: Deno.env.get('SUPABASE_URL'), key: Deno.env.get('SUPABASE_SERVICE_ROLE_KEY'),
+  email: registrationEmailConfig(name => Deno.env.get(name)),
+  waitUntil: promise => EdgeRuntime.waitUntil(promise)
+}));
