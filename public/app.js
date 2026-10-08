@@ -210,7 +210,7 @@ function supportCard() {
   return contactCard('Registration help', supportContacts(state.event), 'For registration-related troubleshooting issues.');
 }
 function coordinatorCard() {
-  return contactCard('Program Coordinators', programCoordinators);
+  return contactCard('Program Coordinators', programCoordinators, 'For Program Details');
 }
 function contactCard(title, contacts, description = '') {
   return contacts.length ? `<div class="support-card">${icon('users')}<strong>${esc(title)}</strong>${description ? `<p class="contact-description">${esc(description)}</p>` : ''}<ul>${contacts.map(c => `<li><span>${esc(c.name)}</span><a href="tel:${esc(c.phone.replace(/[^\d+]/g, ''))}" aria-label="Call ${esc(c.name)} at ${esc(c.phone)}">${esc(c.phone)}</a><a href="https://wa.me/${waNumber(c.phone)}" target="_blank" rel="noopener" aria-label="WhatsApp ${esc(c.name)}">WhatsApp</a></li>`).join('')}</ul></div>` : '';

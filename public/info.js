@@ -14,9 +14,10 @@ export const registrationContacts = [
   { name: 'Febin', phone: '8129966736' }
 ];
 
-// Add the two remaining program coordinators here when their details are available.
 export const programCoordinators = [
-  { name: 'MC George', phone: '9620753153' }
+  { name: 'MC George', phone: '9620753153' },
+  { name: 'Santhosh Varghese', phone: '8861006400' },
+  { name: 'Jacob John', phone: '9902805499' }
 ];
 
 // The original published support list used the same placeholder phone for all three people.
