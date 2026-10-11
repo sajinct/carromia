@@ -135,3 +135,16 @@ label{font-size:13px;line-height:1.5}input,select,textarea{font-size:14px;min-he
   .sidebar-bottom .logout{gap:12px;min-height:44px;width:100%;padding:12px 10px;text-align:left;font-size:13px;line-height:1.5}
   .sidebar-bottom .logout .icon{width:18px;height:18px}
 }
+.registration-demo{margin:0 0 20px;border:1px solid var(--line);border-radius:12px;background:#f1eee0;overflow:hidden}
+.registration-demo summary{display:flex;align-items:center;gap:12px;min-height:58px;padding:14px 16px;cursor:pointer;list-style:none;color:var(--green);font-size:14px;font-weight:600}
+.registration-demo summary::-webkit-details-marker{display:none}
+.registration-demo summary>.icon{flex-shrink:0}
+.registration-demo summary>span{flex:1;min-width:0}
+.registration-demo summary small{display:block;margin-top:3px;color:#637166;font-size:11px;font-weight:400}
+.registration-demo summary::after{content:'+';font-size:22px;font-weight:400}
+.registration-demo[open] summary::after{content:'−'}
+.registration-demo summary:focus-visible{outline:3px solid #a38b38;outline-offset:-3px}
+.registration-demo-content{padding:0 16px 16px}
+.registration-demo-content p{margin:0 0 12px;color:#586c5f;font-size:13px;line-height:1.6}
+.registration-demo video{display:block;width:100%;height:auto;max-height:65vh;object-fit:contain;background:#10251f;border-radius:8px}
+.registration-demo-content>.text-link{display:inline-flex;margin-top:12px;font-size:12px}
