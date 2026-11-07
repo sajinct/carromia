@@ -556,7 +556,7 @@ const nameInitials = name => String(name).split(/\s+/).map(w => w[0]).join('').s
 // A tap on a photo shows the full-size one.
 const playerPhoto = (t, i) => photos[t.id]?.[i] ? `<button type="button" class="photo-button" data-action="photo-full" data-id="${t.id}" data-player="${i}" aria-label="Show ${esc(t.players[i]?.name || 'the player')}’s photo"><img class="player-photo" src="${photos[t.id][i]}" alt="" width="36" height="36"></button>` : `<span class="player-photo">${esc(nameInitials(t.players[i]?.name || '?'))}</span>`;
 const idLabel = p => p.idType ? `${esc(p.idType)} ··${esc(p.idLast4)}` : '';
-// Pending teams: the payment to confirm. Confirmed teams: check-in.
+// Pending teams: the payment to confirm. Confirmed teams: check-in and saved payment details.
 function lunchCell(t) {
   if (!t.lunch) return '—';
   if (!lunchOn()) return `${t.lunch} booked`;
@@ -566,7 +566,7 @@ function lunchCell(t) {
 // The teams still waiting on this team's payment: its whole group, or just the team.
 const pendingGroup = t => !t ? [] : t.group ? state.teams.filter(g => g.group?.id === t.group.id && g.status === 'pending') : [t];
 function checkinCell(t) {
-  if (t.status !== 'pending') return `<button class="btn tiny ${t.checkedIn ? 'soft' : 'outline'}" data-action="checkin" data-id="${t.id}" data-checked="${!t.checkedIn}">${icon(t.checkedIn ? 'check' : 'plus')}${t.checkedIn ? 'Checked in' : 'Check in'}</button>`;
+  if (t.status !== 'pending') return `<button class="btn tiny ${t.checkedIn ? 'soft' : 'outline'}" data-action="checkin" data-id="${t.id}" data-checked="${!t.checkedIn}">${icon(t.checkedIn ? 'check' : 'plus')}${t.checkedIn ? 'Checked in' : 'Check in'}</button>${t.payment && ['admin', 'official'].includes(state.user?.role) ? `<small class="payment-ref"><button type="button" class="link-button" data-action="payment-details" data-id="${t.id}" aria-label="View payment details for ${esc(t.name)}">View payment</button></small>` : ''}`;
   if (staffRole()) return badge('Awaiting payment', 'orange');
   return `<button class="btn tiny primary" data-action="confirm-payment" data-id="${t.id}">${icon('check')}Confirm payment${t.payment?.teams > 1 ? ` · ${t.payment.teams} teams` : ''}</button><small class="payment-ref">${t.payment?.teams > 1 ? `${money(t.payment.amount)} for group ${esc(t.group?.id)} · ` : ''}${t.payment?.txnRef ? `UTR ${esc(t.payment.txnRef)}` : 'No UTR given'}</small>${t.payment?.screenshot ? `<button class="link-button" data-action="payment-proof" data-id="${t.id}">View screenshot</button>` : ''}`;
 }
@@ -744,6 +744,13 @@ document.addEventListener('click', async event => {
     if (action === 'remove-upi-qr') { b.disabled = false; $('#settings-form [name=upiQr]').value = ''; $('#upi-qr-preview').hidden = true; b.hidden = true; return; }
     if (action === 'photo-full') { const t = team(id), p = Number(b.dataset.player), { url } = await api(`photo-full?team=${encodeURIComponent(id)}&player=${p}`); b.disabled = false; return dialog(`<div class="eyebrow">${esc(id)} · ${esc(t?.name)}</div><h2>${esc(t?.players[p]?.name || 'Player photo')}</h2><img class="payment-proof" src="${url}" alt="Photo of ${esc(t?.players[p]?.name || 'the player')}">`); }
     if (action === 'payment-proof') { const proofs = await api('payment-proofs'); b.disabled = false; return dialog(proofs[id] ? `<div class="eyebrow">${esc(id)}</div><h2>Payment screenshot</h2><img class="payment-proof" src="${proofs[id]}" alt="Payment screenshot for ${esc(id)}">` : '<h2>No screenshot</h2><p>This team gave only a transaction number.</p>'); }
+    if (action === 'payment-details') {
+      const t = team(id), payment = t?.payment;
+      if (!payment || !['admin', 'official'].includes(state.user?.role)) throw new Error('Payment details are unavailable for this team.');
+      const proofs = payment.screenshot ? await api('payment-proofs') : {};
+      b.disabled = false;
+      return dialog(`<div class="eyebrow">${esc(id)} · ${esc(t.name)}</div><h2>Payment details</h2><p>${money(payment.amount)}${payment.teams > 1 ? ` for ${payment.teams} teams · Group ${esc(t.group?.id)}` : ''}</p><p>UPI transaction number (UTR)<br><strong>${payment.txnRef ? esc(payment.txnRef) : 'No UTR submitted'}</strong></p>${proofs[id] ? `<img class="payment-proof" src="${esc(proofs[id])}" alt="Payment screenshot for ${esc(id)}">` : `<p class="form-note">${payment.screenshot ? 'The payment screenshot is unavailable. Please try again later.' : 'No payment screenshot submitted.'}</p>`}`);
+    }
     if (action === 'confirm-payment') {
       const t = team(id), group = pendingGroup(t); b.disabled = false;
       if (group.length > 1) return dialog(`<div class="eyebrow">Group ${esc(t.group.id)} · ${money(t.payment?.amount ?? state.event.entryFee * group.length)}</div><h2>Confirm the payment for ${group.length} teams?</h2><p>One payment from ${esc(t.parish)} covers these teams${t.payment?.txnRef ? `: UTR <strong>${esc(t.payment.txnRef)}</strong>` : ''}. Check that it has reached the bank; ${group.length === 2 ? 'both' : `all ${group.length}`} are confirmed together and can then download their forms and check in.</p><ol class="group-teams">${group.map(g => `<li><strong>${g.id}</strong><span>${esc(g.name)}<small>${g.players.map(p => esc(p.name)).join(' & ')}</small></span></li>`).join('')}</ol><div class="dialog-actions"><button class="btn outline" data-action="close">Not yet</button><button class="btn primary" data-action="confirm-payment-yes" data-id="${esc(id)}">${icon('check')} Payment received</button></div>`);
