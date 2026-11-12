@@ -32,8 +32,29 @@ export function boardStream(state, boardId, matchId) {
   return stream?.enabled ? stream : null;
 }
 
+export function publicBoardLayout(media = {}) {
+  return (Array.isArray(media?.boardLayout) ? media.boardLayout : [])
+    .filter(item => [1, 2, 3, 4].includes(item?.boardId))
+    .map(item => ({ boardId: item.boardId, visible: item.visible !== false, showInfo: item.showInfo !== false }));
+}
+
+export function boardDisplay(media, boardId) {
+  const saved = publicBoardLayout(media).find(item => item.boardId === boardId);
+  return { visible: saved?.visible !== false, showInfo: saved?.showInfo !== false };
+}
+
+export function visibleLiveBoards(state) {
+  return state.boards.filter(board => {
+    const display = boardDisplay(state.media, board.id);
+    if (!display.visible) return false;
+    const match = state.matches.find(m => m.board === board.id && ['called', 'playing'].includes(m.status));
+    return display.showInfo || Boolean(boardStream(state, board.id, match?.id));
+  });
+}
+
 export function publicMedia(media = {}) {
   return { streamsEnabled: media.streamsEnabled === true, galleryEnabled: media.galleryEnabled === true,
+    boardLayout: publicBoardLayout(media),
     streams: media.streamsEnabled ? (media.streams || []).map(({ boardId, matchId, enabled, url }) => ({ boardId, matchId, enabled, url: enabled ? url : '' })) : [],
     gallery: media.galleryEnabled ? (media.gallery || []).filter(p => p.status === 'approved').map(({ id, url, title, kind, status }) => ({ id, url, title, kind, status })) : [] };
 }

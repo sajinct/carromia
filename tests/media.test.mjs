@@ -1,10 +1,54 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { emptyState, seedDemo, updateMedia, publicState, refusal, actions, freshEvent, checkBoard, teamsFor, submitGallery } from '../lib/tournament.mjs';
-import { socialLink, boardStream } from '../public/social.js';
-import { streamCard, galleryContent, mediaAdmin, renderMediaPage, gallerySubmissionForm } from '../public/media-view.js';
+import { socialLink, boardStream, boardDisplay, visibleLiveBoards, publicBoardLayout } from '../public/social.js';
+import { streamCard, streamOnlyBoard, liveBoardControls, galleryContent, mediaAdmin, renderMediaPage, gallerySubmissionForm } from '../public/media-view.js';
 
 const video = 'https://youtu.be/M7lc1UVf-VE';
+
+test('live layout defaults to every scorecard and permits a single stream-only board for the final', () => {
+  const state = seedDemo(), before = structuredClone({ teams: state.teams, boards: state.boards, matches: state.matches });
+  assert.deepEqual(visibleLiveBoards(state).map(b => b.id), [1, 2, 3, 4]);
+  assert.deepEqual(boardDisplay(undefined, 1), { visible: true, showInfo: true });
+  updateMedia(state, { operation: 'stream', boardId: 3, url: video, enabled: true });
+  const layout = state.boards.map(b => ({ boardId: b.id, visible: b.id === 3, showInfo: false }));
+  updateMedia(state, { operation: 'settings', streamsEnabled: true, boardLayout: layout });
+  assert.deepEqual(visibleLiveBoards(publicState(state)).map(b => b.id), [3]);
+  const html = streamOnlyBoard(state, 3, 'M03');
+  assert.match(html, /id="board-3"/); assert.match(html, /iframe/); assert.match(html, /stream-only/);
+  assert.doesNotMatch(html, /timer-area|board-team|round-strip|Baseline Brothers/);
+  assert.deepEqual({ teams: state.teams, boards: state.boards, matches: state.matches }, before, 'display changes never affect desk scoring or fixtures');
+  assert.deepEqual(publicState(state).media.boardLayout, layout);
+  updateMedia(state, { operation: 'settings', streamsEnabled: true });
+  assert.deepEqual(state.media.boardLayout, layout, 'older settings requests preserve layout');
+});
+
+test('hidden or unavailable stream-only boards are omitted; restoring info works without a stream', () => {
+  const state = seedDemo();
+  const layout = state.boards.map(b => ({ boardId: b.id, visible: b.id === 1, showInfo: false }));
+  updateMedia(state, { operation: 'settings', streamsEnabled: true, boardLayout: layout });
+  assert.deepEqual(visibleLiveBoards(state), [], 'no empty card when the info is off and no stream exists');
+  updateMedia(state, { operation: 'stream', boardId: 1, url: video, enabled: true });
+  assert.deepEqual(visibleLiveBoards(state).map(b => b.id), [1]);
+  updateMedia(state, { operation: 'stream', matchId: 'M01', url: video, enabled: false });
+  assert.deepEqual(visibleLiveBoards(state), [], 'disabled match override takes priority');
+  layout[0].showInfo = true;
+  updateMedia(state, { operation: 'settings', streamsEnabled: false, boardLayout: layout });
+  assert.deepEqual(visibleLiveBoards(state).map(b => b.id), [1]);
+  layout[0].visible = false; updateMedia(state, { operation: 'settings', boardLayout: layout });
+  assert.deepEqual(visibleLiveBoards(state), [], 'turning off all boards is supported');
+});
+
+test('layout controls are per board, read-only for media managers, validated and public-safe', () => {
+  const state = seedDemo();
+  const controls = liveBoardControls(state);
+  for (const b of state.boards) { assert.match(controls, new RegExp(`name="boardVisible${b.id}"`)); assert.match(controls, new RegExp(`name="boardInfo${b.id}"`)); }
+  assert.match(liveBoardControls(state, true), /disabled/);
+  for (const boardLayout of [{}, [{ boardId: 99, visible: true, showInfo: true }], [{ boardId: 1, visible: 'off', showInfo: true }], [{ boardId: 1, visible: true, showInfo: true }, { boardId: 1, visible: true, showInfo: true }]]) {
+    const before = structuredClone(state); assert.throws(() => updateMedia(state, { operation: 'settings', boardLayout })); assert.deepEqual(state, before);
+  }
+  assert.deepEqual(publicBoardLayout({ boardLayout: [{ boardId: 2, visible: false, showInfo: false, secret: 'private' }, { boardId: 99, secret: 'private' }] }), [{ boardId: 2, visible: false, showInfo: false }]);
+});
 test('social embeds use supported HTTPS hosts and normalize specific posts', () => {
   for (const url of [video, 'https://www.youtube.com/live/M7lc1UVf-VE?feature=share', 'https://www.youtube.com/watch?v=M7lc1UVf-VE', 'https://youtube.com/shorts/M7lc1UVf-VE']) assert.equal(socialLink(url).url, 'https://www.youtube.com/watch?v=M7lc1UVf-VE');
   assert.match(socialLink(video).embed, /^https:\/\/www.youtube-nocookie.com\/embed\//);

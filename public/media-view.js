@@ -1,4 +1,4 @@
-import { socialLink, boardStream } from './social.js';
+import { socialLink, boardStream, boardDisplay } from './social.js';
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
 function embed(url, title, live = false) {
@@ -13,6 +13,16 @@ function embed(url, title, live = false) {
 export function streamCard(state, boardId, matchId) {
   const stream = boardStream(state, boardId, matchId);
   return stream ? `<section class="board-stream" aria-label="Board ${boardId} stream"><strong>Board ${boardId} · ${matchId || 'Live stream'}</strong>${embed(stream.url, `Board ${boardId} live stream`, true)}</section>` : '';
+}
+export function streamOnlyBoard(state, boardId, matchId) {
+  return `<article id="board-${boardId}" tabindex="-1" class="board-card stream-only" aria-label="Board ${boardId} live stream">${streamCard(state, boardId, matchId)}</article>`;
+}
+
+export function liveBoardControls(state, readOnly = false) {
+  return `<fieldset class="live-layout-settings"><legend>Live board layout</legend><p class="form-note">Choose which boards appear on Live boards. Turn off the match info card when the stream already contains the scoreboard. Hidden boards can still be scored at the desk.</p><div class="live-layout-grid">${state.boards.map(board => {
+    const display = boardDisplay(state.media, board.id);
+    return `<fieldset class="live-layout-board"><legend>Board ${board.id}</legend><label class="checkbox-label"><input name="boardVisible${board.id}" type="checkbox" ${display.visible ? 'checked' : ''} ${readOnly ? 'disabled' : ''}> Display this board</label><label class="checkbox-label"><input name="boardInfo${board.id}" type="checkbox" ${display.showInfo ? 'checked' : ''} ${readOnly ? 'disabled' : ''}> Show match info card</label></fieldset>`;
+  }).join('')}</div><p class="form-note">With match info off, a board is displayed only when its stream is enabled and available. One displayed board expands to fill the layout.</p></fieldset>`;
 }
 export function galleryContent(state) {
   const posts = state.media?.galleryEnabled ? (state.media.gallery || []).filter(p => p.status === 'approved') : [];
@@ -34,7 +44,7 @@ export function mediaAdmin(state) {
   };
   return `<div class="media-admin">
     <section class="panel settings-panel"><h2>Streams &amp; gallery</h2>
-      ${scoped ? `<p>Manage streams for Board${boards.length === 1 ? '' : 's'} ${boards.map(b => b.id).join(', ') || '— no boards assigned'}. Gallery access is shared across the media team.</p><p class="form-note">Live streams: ${media.streamsEnabled ? 'enabled' : 'disabled'} · Gallery: ${media.galleryEnabled ? 'enabled' : 'disabled'}. An event admin controls these display settings.</p>` : `<form id="media-settings-form"><label class="checkbox-label"><input name="streamsEnabled" type="checkbox" ${media.streamsEnabled ? 'checked' : ''}> Show board streams on Live boards</label><label class="checkbox-label"><input name="galleryEnabled" type="checkbox" ${media.galleryEnabled ? 'checked' : ''}> Enable the public photo &amp; video wall</label><p class="form-error" role="alert"></p><button class="btn primary small" type="submit">Save display settings</button></form>`}
+      ${scoped ? `<p>Manage streams for Board${boards.length === 1 ? '' : 's'} ${boards.map(b => b.id).join(', ') || '— no boards assigned'}. Gallery access is shared across the media team.</p><p class="form-note">Live streams: ${media.streamsEnabled ? 'enabled' : 'disabled'} · Gallery: ${media.galleryEnabled ? 'enabled' : 'disabled'}. An event admin controls these display settings.</p>${liveBoardControls(state, true)}` : `<form id="media-settings-form"><label class="checkbox-label"><input name="streamsEnabled" type="checkbox" ${media.streamsEnabled ? 'checked' : ''}> Show board streams on Live boards</label><label class="checkbox-label"><input name="galleryEnabled" type="checkbox" ${media.galleryEnabled ? 'checked' : ''}> Enable the public photo &amp; video wall</label>${liveBoardControls(state)}<p class="form-error" role="alert"></p><button class="btn primary small" type="submit">Save display settings</button></form>`}
       <p class="form-note">Broadcast using YouTube or Facebook, then paste the specific broadcast link below. Instagram live links open on Instagram. Content must be public and allow embedding.</p>
       <a class="text-link" href="/live" target="_blank">Preview Live boards ↗</a> · <a class="text-link" href="/gallery" target="_blank">Preview gallery ↗</a>
     </section>

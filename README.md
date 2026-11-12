@@ -214,6 +214,12 @@ Open the setup from a desk already in practice mode to generate `practice=1` URL
 
 ### Board stream setup
 
+Admins can customize **Live boards** under **Streams & gallery → Live board layout**. Each board has two switches: **Display this board** hides or shows the whole board, and **Show match info card** hides or shows its team names, score, round timer and status. For a final, leave only the final's board displayed, enable its stream, and turn its match info card off if the video already contains the scoreboard. Save display settings to update every viewer. A single displayed board fills the layout; hidden boards remain available for scoring at the desk. Results pages and OBS overlays are unaffected.
+
+When match info is off, a board appears only while an enabled stream is available. Turning all boards off shows a results link instead of empty board cards. Existing events keep every board and match info card visible by default. Layout controls are admin-only; media managers retain their existing assigned-board stream permissions.
+
+Before publishing this layout feature on Supabase, apply `supabase/migrations/20261112010000_carromia_live_board_layout.sql` after the registration-edit migration. It publishes the display choices in the existing public event copy without changing teams, match results or private event versions. No Edge Function deployment is needed for this feature.
+
 Run `supabase/migrations/20261011000000_carromia_media.sql` after the staff-roles migration, then build and deploy the updated site. The migration protects media changes by role and excludes pending/rejected links from the public database copy. The local server needs no migration.
 
 In the desk, admins open **Streams & gallery**. Enable board streams, paste a specific YouTube or Facebook broadcast URL for each board, tick **Show this stream**, and save. Match links override board links only while that match occupies a board. A disabled match override hides its stream; removing it restores the board link. Global disable or missing links keeps the existing board display. Score updates preserve unchanged iframe players. Live-display players request automatic playback as soon as they appear, including when a match is called to a board, and start muted. Use the player controls to turn on sound or press Play if the browser blocks autoplay. Gallery videos remain manual. Streaming cameras and broadcasting remain in the social platform's app.

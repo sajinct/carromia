@@ -459,7 +459,7 @@ test('live Pages runtime: a screen stops checking as soon as the database confir
 });
 
 
-test('Pages runtime syncs streams and gallery approvals and rejects official media edits', async t => {
+test('Pages runtime syncs streams, board layout and gallery approvals and rejects official media edits', async t => {
   const db = fakeSupabase(), memory = new Map(), realFetch = globalThis.fetch;
   globalThis.localStorage = { getItem: key => memory.get(key) ?? null, setItem: (key, value) => memory.set(key, value), removeItem: key => memory.delete(key) };
   globalThis.fetch = db.fetch; globalThis.location = { origin: 'https://sajinct.github.io', pathname: '/carromia/', search: '' };
@@ -469,6 +469,8 @@ test('Pages runtime syncs streams and gallery approvals and rejects official med
   await assert.rejects(remoteApi('media', { operation: 'settings', streamsEnabled: true }), /Only an event admin/);
   await remoteApi('logout'); await remoteApi('login', { email: 'asha@example.org', password: 'admin-pass' });
   await remoteApi('media', { operation: 'settings', streamsEnabled: true, galleryEnabled: true });
+  const boardLayout = [1, 2, 3, 4].map(boardId => ({ boardId, visible: boardId === 1, showInfo: false }));
+  await remoteApi('media', { operation: 'settings', streamsEnabled: true, galleryEnabled: true, boardLayout });
   await remoteApi('media', { operation: 'stream', boardId: 1, url: 'https://youtu.be/M7lc1UVf-VE', enabled: true });
   await remoteApi('media', { operation: 'add', url: 'https://instagram.com/p/ABC123/', title: 'Opening day', kind: 'photo' });
   const id = db.rows.main.state.media.gallery[0].id;
@@ -477,6 +479,7 @@ test('Pages runtime syncs streams and gallery approvals and rejects official med
   assert.equal(db.public.state.media.gallery[0].id, id);
   await remoteApi('logout');
   const pub = await remoteApi('state'); assert.equal(pub.media.gallery.length, 1); assert.equal(pub.media.streams.length, 1);
+  assert.deepEqual(pub.media.boardLayout, boardLayout, 'public viewers receive saved visibility and scorecard switches');
   await assert.rejects(remoteApi('media', { operation: 'review', id, status: 'rejected' }), /Sign in/);
 });
 
