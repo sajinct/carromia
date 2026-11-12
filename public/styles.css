@@ -269,6 +269,7 @@ a.ph-info-link:hover strong,.ph-info>a:hover strong{text-decoration:underline;te
 .link-button{background:none;border:0;padding:0;margin-top:4px;color:var(--green-2);text-decoration:underline;font-size:11px;cursor:pointer}
 .row-actions{display:inline-flex;gap:6px;flex-wrap:wrap}
 .payment-proof{display:block;max-width:100%;max-height:70vh;margin:0 auto;border-radius:8px}
+.registration-edit-form{display:grid;gap:14px}.registration-edit-form fieldset{min-width:0;margin:0;padding:16px;border:1px solid var(--line);border-radius:8px}.registration-edit-form legend{font-size:13px;font-weight:600;color:var(--green);padding:0 6px}.registration-edit-form .notice{font-size:12px;line-height:1.7}.registration-edit-form .photo-field{align-items:center}.registration-edit-form .photo-preview{object-fit:cover;flex:none}.registration-edit-form .form-row{margin-bottom:0}
 .teams-page{padding:40px 0 60px}
 .teams-page .search-field{margin-top:18px;max-width:420px}
 .team-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:14px;margin-top:24px}

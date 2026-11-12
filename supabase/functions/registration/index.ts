@@ -1,7 +1,7 @@
 // CARROMIA registration files (Supabase Edge Function "registration").
 // Player photos and payment screenshots are kept in the private "team-files" Storage bucket, which
 // browsers can't write to or read from without an official's sign-in. This function holds the
-// service key and does the three things the public and the desk need:
+// service key and handles registration files for the public and the desk:
 // * register: checks the pictures, uploads them to team-files/<event>/<uuid>/ (a folder per team),
 //   then registers the team, or a parish's teams with one payment, with register_teams() (which
 //   checks the files exist). If registration fails, the files go.
@@ -10,6 +10,8 @@
 //   photo thumbnails.
 // * group-form: the same for every team in a group registration, for the parish coordinator.
 // * sweep: for a signed-in official, deletes files nothing points at any more (unreferenced_files()).
+// * stage-registration-files: only admins/officials may upload immutable replacement pictures;
+//   save_registration() then commits their references together with the edited registration.
 // Deploy: Dashboard -> Edge Functions -> Deploy a new function -> Via editor, name "registration",
 // paste this file, add email.mjs alongside it, and turn off "Enforce JWT verification".
 // Plain JavaScript on purpose, so it can be pasted into the dashboard editor and tested in Node.
@@ -55,6 +57,35 @@ export async function handle(req, env, fetchImpl = fetch) {
     const event = input.p_event === 'practice' || input.event === 'practice' ? 'practice' : 'main';
 
     switch (input.action) {
+      case 'stage-registration-files': {
+        const token = (req.headers.get('Authorization') || '').replace(/^Bearer\s+/i, '');
+        if (!token) fail(401, 'Sign in to the tournament desk first.');
+        let me;
+        try { me = await call('/auth/v1/user', { headers: { Authorization: `Bearer ${token}` } }); } catch { fail(401, 'Your sign-in has expired. Please sign in again.'); }
+        const [mine] = await call(`/rest/v1/officials?user_id=eq.${encodeURIComponent(me.id)}&select=role`);
+        if (!['admin', 'official'].includes(mine?.role)) fail(403, 'Only event admins and officials can edit registrations.');
+        const [row] = await call(`/rest/v1/tournament?id=eq.${event}&select=state`);
+        const team = row?.state?.teams?.find(t => t.id === input.id);
+        if (!team) fail(404, 'Team not found.');
+        if (input.expectedVersion !== (team.registrationVersion || 0)) fail(409, 'This registration changed while you were editing. Close the editor and reopen it.');
+        if (input.photos !== undefined && (!Array.isArray(input.photos) || input.photos.length !== 2)) fail(400, 'Choose replacement photos for the two registered players.');
+        if (input.screenshot && !team.payment) fail(400, 'This registration has no payment record to update.');
+        const folder = `${event}/${crypto.randomUUID()}`, files = [], photos = {};
+        (input.photos || []).forEach((picture, i) => {
+          if (!picture) return;
+          const path = `${folder}/player-${i + 1}.jpg`;
+          files.push([path, jpegBytes(picture.photo, maxPhoto, photoMessage)], [thumbPath(path), jpegBytes(picture.thumb, maxThumb, photoMessage)]);
+          photos[i] = path;
+        });
+        const payment = input.screenshot ? `${folder}/payment.jpg` : '';
+        if (payment) files.push([payment, jpegBytes(input.screenshot, maxPhoto, shotMessage)]);
+        // Wait for every upload before cleanup; a late upload must not recreate a deleted file.
+        const uploaded = await Promise.allSettled(files.map(([path, bytes]) => call(`/storage/v1/object/team-files/${path}`, { method: 'POST', bytes })));
+        const failed = uploaded.find(r => r.status === 'rejected');
+        if (failed) { await remove(files.map(([path]) => path)).catch(() => {}); throw failed.reason; }
+        // Metadata is changed only by save_registration(), in the same transaction as the details.
+        return reply(200, { photos, payment });
+      }
       case 'register': {
         // One team (p_name, p_players, p_primary, p_lunch) or several from one parish (p_teams),
         // paid for together. Each team's photos go in a folder of its own; the screenshot in the first.

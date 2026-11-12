@@ -110,6 +110,29 @@ test('payment at registration: pending until an official confirms it; the form n
   for (let i = 0; i < 7; i++) await form('CAR-001', '9000000000');
   assert.equal((await form('CAR-001', '9111111111')).status, 429, 'wrong numbers are rate limited');
 });
+test('official registration edits persist replacement photos and shared payment proof after confirmation', async t => {
+  const { base, post, login } = await serve(t, 3123); const cookie = await login();
+  await post('settings', { gamesPerMatch: 3, gameMinutes: 10, resetMinutes: 5, restMinutes: 0, registrationOpen: true, registrationDeadline: '', paymentRequired: true, upiId: 'demo@upi' }, cookie);
+  const first = entry(1), second = { ...entry(1), name: 'Second team', players: [player('Three', '9333333333'), player('Four', '9444444444')] };
+  const registered = await (await post('register', { ...first, coordinator: { name: 'Coordinator', mobile: '9900000000' }, teams: [first, second], payment: { txnRef: 'UTR123456', screenshot: photo } })).json();
+  const team = registered.teams[0]; await post('confirm-payment', { id: team.id }, cookie);
+  const oldPhotos = await (await fetch(`${base}/api/photos`, { headers: { Cookie: cookie } })).json();
+  const input = { ...team, expectedVersion: 0, name: 'Corrected team', coordinator: { name: 'Updated coordinator', mobile: '9888888888' }, primaryContact: 1, lunch: 1,
+    players: team.players.map(p => ({ ...p, name: `${p.name} corrected` })), photos: [{ photo, thumb: photo }, null], payment: { txnRef: 'NEW654321', screenshot: photo } };
+  assert.equal((await post('update-registration', input)).status, 401);
+  const saved = await post('update-registration', input, cookie); assert.equal(saved.status, 200, JSON.stringify(await saved.json()));
+  const state = await (await fetch(`${base}/api/state`, { headers: { Cookie: cookie } })).json();
+  assert.equal(state.teams[0].name, 'Corrected team'); assert.equal(state.teams[0].status, 'confirmed'); assert.equal(state.teams[0].checkinToken, team.checkinToken);
+  assert.equal(state.teams[1].payment.txnRef, 'NEW654321'); assert.equal(state.teams[1].group.coordinator.mobile, '9888888888');
+  const updatedPhotos = await (await fetch(`${base}/api/photos`, { headers: { Cookie: cookie } })).json();
+  assert.notEqual(updatedPhotos[team.id][0], oldPhotos[team.id][0]); assert.equal(updatedPhotos[team.id][1], oldPhotos[team.id][1]);
+  const proofs = await (await fetch(`${base}/api/payment-proofs`, { headers: { Cookie: cookie } })).json(); assert.equal(proofs[team.id], proofs[registered.teams[1].id]);
+  assert.equal((await fetch(base + proofs[team.id], { headers: { Cookie: cookie } })).status, 200);
+  assert.equal((await post('update-registration', input, cookie)).status, 400, 'a stale form is rejected');
+  const forms = await (await post('group-form', { id: team.id, mobile: '9888888888' })).json(); assert.equal(forms.forms[0].team.name, 'Corrected team');
+  const publicState = await (await fetch(`${base}/api/state`)).json(); assert.equal(publicState.teams[0].payment, undefined); assert.equal(publicState.teams[0].players[0].mobile, undefined);
+});
+
 test('a parish registers several teams with one payment; one confirmation and one download cover them all', async t => {
   const { base, data, post, login } = await serve(t, 3103); const cookie = await login(), qr = photo.replace('jpeg', 'png');
   assert.equal((await post('settings', { gamesPerMatch: 3, gameMinutes: 10, resetMinutes: 5, restMinutes: 0, registrationOpen: true, registrationDeadline: '', paymentRequired: true, upiQr: qr }, cookie)).status, 200);

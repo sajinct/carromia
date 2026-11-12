@@ -87,12 +87,14 @@ async function load(user) {
 }
 
 // Applies a desk action to the latest saved event and saves it; retries if someone saved first.
-async function change(user, action, input, apply) {
+async function change(user, action, input, apply, registrationFiles) {
   for (let attempt = 1; ; attempt++) {
     const { id, version, state } = await load(user);
     const next = apply(state, id) ?? state;
     const { password, confirm, token, ...detail } = input;
-    try { await request('/rest/v1/rpc/save_tournament', { method: 'POST', token: user.token, body: { p_expected: version, p_state: next, p_public: publicState(next), p_action: action, p_detail: detail, p_id: id } }); return; }
+    const body = registrationFiles ? { p_expected: version, p_state: next, p_team_id: input.id, p_photos: registrationFiles.photos, p_payment: registrationFiles.payment, p_detail: { id: input.id, expectedVersion: input.expectedVersion, photos: Object.keys(registrationFiles.photos), paymentScreenshot: Boolean(registrationFiles.payment) }, p_id: id }
+      : { p_expected: version, p_state: next, p_public: publicState(next), p_action: action, p_detail: detail, p_id: id };
+    try { await request(`/rest/v1/rpc/${registrationFiles ? 'save_registration' : 'save_tournament'}`, { method: 'POST', token: user.token, body }); return; }
     catch (error) { if (error.status !== 409 || attempt >= 3) throw error; }
   }
 }
@@ -210,6 +212,8 @@ export async function remoteApi(path, input = {}) {
       p_teams: teams.map(t => ({ name: t.name, players: Array.isArray(t.players) ? t.players : [], primaryContact: Number(t.primaryContact) === 1 ? 1 : 0, lunch: Number(t.lunch) || 0 })) });
   }
 
+  // Read-only browser sources always use the public copy, even in a signed-in browser.
+  if (path === 'public-state') return view(null);
   let user = await official();
   if (path === 'state') return view(user);
   if (user) user = await profile(user);
@@ -249,6 +253,19 @@ export async function remoteApi(path, input = {}) {
   // In practice mode an official may try every action; the real event keeps admin-only actions.
   // Check-in, lunch and umpire accounts do only their own job, in practice too.
   const refused = refusal(action, user, practiceOn()); fail(refused, refused);
+  if (path === 'update-registration') {
+    fail(!['admin', 'official'].includes(user.role), 'Only event admins and officials can edit registrations.');
+    fail(input.photos !== undefined && (!Array.isArray(input.photos) || input.photos.length !== 2), 'Choose replacement photos for the two registered players.');
+    paymentProof(input);
+    const { state: current } = await load(user);
+    action.run(current, input, { now: now(), official: user.name });
+    const replacements = input.photos?.some(Boolean) || input.payment?.screenshot;
+    const files = replacements ? await registration({ action: 'stage-registration-files', event: eventId(), id: input.id, expectedVersion: input.expectedVersion, photos: input.photos, screenshot: input.payment?.screenshot || '' }, user.token) : { photos: {}, payment: '' };
+    try { await change(user, path, input, state => action.run(state, input, { now: now(), official: user.name }), files); }
+    catch (error) { if (error.status === 404 || /save_registration/.test(error.message)) throw new Error('Registration editing needs its database update. Apply the registration-edit migration and redeploy the registration function.'); throw error; }
+    registration({ action: 'sweep' }, user.token).catch(() => {});
+    return { ok: true };
+  }
   await change(user, path, input, (state, event) => { checkBoard(state, input, user); return action.run(state, input, { now: now(), official: user.name, event }); });
   // A removed team's files, or a fresh event's, are deleted in the background.
   if (path === 'remove-team' || path === 'reset') registration({ action: 'sweep' }, user.token).catch(() => {});

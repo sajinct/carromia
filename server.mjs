@@ -22,10 +22,10 @@ setInterval(() => { const now = Date.now(); for (const map of [sessions, attempt
 function broadcast() { for (const stream of streams) stream.write('data: update\n\n'); }
 // Changes run one at a time so a slow save can never interleave with, or roll back, another change.
 let queue = Promise.resolve();
-function change(fn) {
+function change(fn, registrationEdit) {
   const run = queue.then(async () => {
     const before = structuredClone(state);
-    try { const value = fn(); await store.save(state); broadcast(); return value; }
+    try { const value = fn(); await (registrationEdit ? store.saveRegistration(state, registrationEdit) : store.save(state)); broadcast(); return value; }
     catch (error) {
       if (!(error instanceof ConflictError)) { state = before; throw error; }
       state = (await store.load()) ?? emptyState(); broadcast(); throw error;
@@ -103,7 +103,7 @@ const server = http.createServer(async (req, res) => {
     if (url.pathname.startsWith('/api/') && req.method === 'POST') {
       if (req.headers.origin && req.headers.origin !== `http://${req.headers.host}` && req.headers.origin !== process.env.PUBLIC_URL) return send(res, 403, { error: 'Origin not allowed.' });
       // Registration carries two player photos (each with a thumbnail) and a payment screenshot.
-      const input = await body(req, { '/api/register': registerLimit, '/api/upi-qr': 7100000, '/api/settings': 300000 }[url.pathname] ?? 20000);
+      const input = await body(req, { '/api/register': registerLimit, '/api/update-registration': 18000000, '/api/upi-qr': 7100000, '/api/settings': 300000 }[url.pathname] ?? 20000);
       if (url.pathname === '/api/gallery-submit') {
         if (limited(`gallery:${req.socket.remoteAddress}`, 8, 600000)) return send(res, 429, { error: 'Too many links from this connection. Try again in 10 minutes.' });
         await change(() => submitGallery(state, input));
@@ -155,6 +155,24 @@ const server = http.createServer(async (req, res) => {
       }
       const user = await official(req);
       if (!user) return send(res, 401, { error: 'Sign in to the tournament desk first.' });
+      if (url.pathname === '/api/update-registration') {
+        if (!['admin', 'official'].includes(user.role)) return send(res, 403, { error: 'Only event admins and officials can edit registrations.' });
+        // Check the complete edit before uploading any replacement files; recheck in the save queue.
+        const action = actions['update-registration']; action.run(structuredClone(state), input, { now: Date.now(), official: user.name });
+        const folder = teamFiles(`main/${randomUUID()}`), photos = {}, files = [];
+        if (input.photos !== undefined) fail(!Array.isArray(input.photos) || input.photos.length !== 2, 'Choose replacement photos for the two registered players.');
+        for (const [i, picture] of (input.photos || []).entries()) if (picture) {
+          const checked = playerPhotos({ players: [picture, picture] })[0]; photos[i] = folder.photos[i];
+          files.push([photos[i], checked.photo], [thumbPath(photos[i]), checked.thumb]);
+        }
+        const proof = paymentProof(input); if (proof) files.push([folder.payment, proof]);
+        for (const [, image] of files) { const data = bytes(image); fail(data[0] !== 255 || data[1] !== 216 || data[2] !== 255, 'Upload a valid JPEG picture.'); }
+        await Promise.all(files.map(([path, data]) => store.saveFile('team-files', path, bytes(data), 'image/jpeg')));
+        const detail = { id: input.id, expectedVersion: input.expectedVersion, photos: Object.keys(photos), paymentScreenshot: Boolean(proof) };
+        await change(() => action.run(state, input, { now: Date.now(), official: user.name }), { id: input.id, photos, payment: proof ? folder.payment : '', detail });
+        await store.audit({ actor_id: user.id, actor_name: user.name, action: 'update-registration', detail });
+        return send(res, 200, { ok: true });
+      }
       if (url.pathname === '/api/change-password') {
         if (!supabase) return send(res, 400, { error: 'The desk password is set with ADMIN_PASSWORD when the server starts.' });
         if (limited(`password:${user.id}`, 5, 60000)) return send(res, 429, { error: 'Too many attempts. Try again in a minute.' });

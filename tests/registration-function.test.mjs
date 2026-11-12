@@ -25,8 +25,8 @@ function fakeSupabase() {
     if (url.pathname === '/storage/v1/object/sign/team-files') return reply(200, body.paths.map(path => ({ path, signedURL: `/object/sign/team-files/${path}?token=t` })));
     if (url.pathname === '/rest/v1/rpc/unreferenced_files') return reply(200, db.unreferenced);
     if (url.pathname === '/auth/v1/user') return { 'token-official': reply(200, { id: 'u1' }), 'token-guest': reply(200, { id: 'u9' }) }[init.headers.Authorization?.replace('Bearer ', '')] ?? reply(401, { msg: 'invalid JWT' });
-    if (url.pathname === '/rest/v1/officials') return reply(200, url.searchParams.get('user_id') === 'eq.u1' ? [{ role: 'official' }] : []);
-    if (url.pathname === '/rest/v1/tournament') return reply(200, [{ event: {} }]);
+    if (url.pathname === '/rest/v1/officials') return reply(200, url.searchParams.get('user_id') === 'eq.u1' ? [{ role: db.role || 'official' }] : []);
+    if (url.pathname === '/rest/v1/tournament') return reply(200, db.state ? [{ state: db.state }] : [{ event: {} }]);
     return reply(404, { message: 'not mocked' });
   };
   return db;
@@ -101,6 +101,25 @@ test('registration function: uploads checked pictures, cleans up after a refused
   res = await call({ action: 'sweep' }, 'token-official');
   assert.deepEqual([res.status, res.body.deleted, db.files.size], [200, 1, 0]);
   assert.equal((await call({ action: 'nope' })).status, 400);
+});
+
+test('registration file replacements require admin/official access and stage immutable files without changing metadata', async () => {
+  const db = fakeSupabase(); db.state = { teams: [{ id: 'CAR-001', payment: { screenshot: true } }] };
+  const input = { action: 'stage-registration-files', event: 'main', id: 'CAR-001', expectedVersion: 0, photos: [{ photo, thumb: photo }, null], screenshot: photo };
+  const call = (body, token, fetchImpl = db.fetch) => handle(new Request('https://x/functions/v1/registration', { method: 'POST', headers: token ? { Authorization: `Bearer ${token}` } : {}, body: JSON.stringify(body) }), { url: 'https://example.supabase.co', key: 'sb_secret_test' }, fetchImpl);
+  assert.equal((await call(input)).status, 401);
+  assert.equal((await call(input, 'token-guest')).status, 403);
+  for (const role of ['checkin', 'lunch', 'umpire', 'media']) { db.role = role; assert.equal((await call(input, 'token-official')).status, 403); }
+  db.role = 'official';
+  assert.equal((await call({ ...input, expectedVersion: 1 }, 'token-official')).status, 409);
+  assert.equal((await call({ ...input, photos: [{ photo: 'invalid', thumb: photo }, null] }, 'token-official')).status, 400);
+  assert.equal(db.files.size, 0);
+  let response = await call(input, 'token-official'); assert.equal(response.status, 200);
+  const files = await response.json(); assert.match(files.photos[0], /^main\/[0-9a-f-]{36}\/player-1.jpg$/); assert.ok(files.payment.endsWith('/payment.jpg'));
+  assert.equal(db.files.size, 3); assert.equal(db.rpc.length, 0, 'staging never commits registration details or file metadata');
+  db.files.clear();
+  const failingUpload = async (href, init) => href.endsWith('/payment.jpg') && init.method === 'POST' ? new Response('{"message":"upload failed"}', { status: 503 }) : db.fetch(href, init);
+  response = await call(input, 'token-official', failingUpload); assert.equal(response.status, 502); assert.equal(db.files.size, 0, 'all successful partial uploads are cleaned up');
 });
 
 test('registration emails use saved settings after commit, never visitor-supplied recipients', async () => {

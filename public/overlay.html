@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  <meta name="color-scheme" content="dark">
+  <title>CARROMIA · Stream overlay</title>
+  <link rel="icon" href="./icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="./overlay.css">
+  <script type="module" src="./overlay.js"></script>
+</head>
+<body>
+  <main id="overlay-setup" hidden>
+    <header class="setup-header"><img src="./icon.svg" width="44" height="44" alt=""><div><span class="setup-kicker">CARROMIA BROADCAST</span><h1>Every round. On screen.</h1><p>A live scoreboard for your match stream.</p></div><span class="setup-tag">OBS BROWSER SOURCE</span></header>
+    <section class="setup-controls" aria-label="Overlay setup">
+      <div><label for="overlay-board">Follow a board</label><select id="overlay-board"><option value="1">Board 1</option><option value="2">Board 2</option><option value="3">Board 3</option><option value="4">Board 4</option></select><p>The overlay follows each new match assigned to this board.</p></div>
+      <div class="setup-link"><label for="overlay-url">Browser source URL</label><input id="overlay-url" readonly><div class="setup-actions"><button type="button" id="overlay-copy">Copy URL</button><a id="overlay-open" target="_blank" rel="noopener">Open transparent overlay ↗</a></div></div>
+    </section>
+    <p id="overlay-feedback" role="status" aria-live="polite"></p>
+    <div class="preview-heading"><h2>Live preview</h2><span>The checked background is transparent in OBS.</span></div>
+    <div id="overlay-preview" class="overlay-preview"></div>
+    <section class="setup-instructions"><h2>Add it to your stream</h2><ol><li>In OBS, add a <strong>Browser</strong> source above your camera.</li><li>Paste the URL and set <strong>Width 1920 · Height 1080</strong>.</li><li>Keep the browser source active for uninterrupted live updates.</li></ol><p>Scores and timers follow the tournament desk automatically. No login or manual score entry is needed. Preview in practice mode before the event.</p></section>
+  </main>
+  <div id="overlay-stage" hidden></div>
+</body>
+</html>

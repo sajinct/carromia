@@ -95,6 +95,14 @@ For the Node server, use the same secrets in `.env` (see `.env.example`) and res
   **Known limit:** on the live site the desk runs the rules in the browser, so these accounts still download the event’s private data, including mobile numbers, ID last-4 digits and payment references, even though the app doesn’t show it. Photos and payment screenshots are locked by the database. Hiding the rest would need check-in, lunch and scoring to move into database functions.
 - **Starting over** (admins): Settings → Start a fresh event → type `RESET`. It clears teams, matches and results, keeps the event details and reopens registration.
 
+### Editing registration details
+
+On the desk's **Teams & check-in** page, admins and officials can use **Edit** for a pending or confirmed team, including after the draw. They can correct the team name, parish, player names/mobile numbers/ID details, primary contact, lunch bookings and UTR, and optionally replace either player's photo or the payment screenshot. Empty file fields keep existing pictures. A group shares parish/coordinator details, UTR and payment proof, so those changes apply to every remaining team in its registration; player details and lunch bookings apply to the selected team.
+
+Team IDs, check-in QR codes, payment confirmation, attendance, lunches already served and match results are preserved. Lunch bookings cannot go below the served count. Corrections appear on live screens and newly downloaded forms. If someone edits the same registration while a form is open, saving is refused until the editor is reopened.
+
+For the live Supabase site, apply `supabase/migrations/20261112000000_carromia_registration_edit.sql` after the existing registration-alerts migration, then redeploy the **registration** Edge Function with the updated `index.ts` and its existing `email.mjs`, then deploy the site. Keep JWT verification off as in the existing setup; the staging endpoint verifies the caller and requires an admin or official. No other Edge Function needs changing. Replacement files use new paths; the database saves the registration details, public copy, audit record and file references in one transaction. Unreferenced Storage files are handled by the existing sweep after its one-hour safety window. The local Node server needs a restart and uses file storage without a migration; Node + Supabase uses the same new migration.
+
 ### Preview the build locally
 
 ```powershell
@@ -195,6 +203,16 @@ The entry fee is shown but not collected or tracked by the app. The rules page a
 
 
 ## Board streams and social gallery
+
+### OBS match overlay
+
+Open **Stream overlay** in the tournament desk sidebar (also available in the phone menu). Select a board, then copy its browser source URL. In OBS, add a **Browser** source above the camera, paste the URL, and set **Width 1920** and **Height 1080**. The page has a transparent background and places the scoreboard at the bottom of the stream. No custom CSS, login or database migration is needed.
+
+The setup page is `overlay.html`; for example, `https://carromia.marymathachurchvijayanagar.com/overlay.html`. A board source looks like `overlay.html?board=1&practice=0`. It follows the board's called/playing match, shows team and player names, rounds won and the current round timer, and holds the last result until the next match is called. A disconnected source keeps its last scores with an updates-interrupted warning and hides the running clock. Sources use only the public event copy and load no analytics or social video players.
+
+Open the setup from a desk already in practice mode to generate `practice=1` URLs for rehearsal. A practice source stops showing matches if practice is disabled. Keep the Browser source active in OBS for uninterrupted updates. The same page works with the local Node server at `http://localhost:3000/overlay.html` and at a GitHub Pages repository subpath.
+
+### Board stream setup
 
 Run `supabase/migrations/20261011000000_carromia_media.sql` after the staff-roles migration, then build and deploy the updated site. The migration protects media changes by role and excludes pending/rejected links from the public database copy. The local server needs no migration.
 

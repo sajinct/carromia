@@ -316,7 +316,7 @@ test('a recorded score can be corrected round by round until the next round is c
   assert.throws(() => correctResult(s, 'M99', {}), /Only a played/);
 });
 test('the action registry names every desk action and flags the admin-only ones', () => {
-  assert.deepEqual(Object.keys(actions).sort(), ['assign', 'board-ready', 'checkin', 'confirm-payment', 'correct-result', 'demo', 'draw', 'media', 'next-round', 'practice-mode', 'remove-team', 'reset', 'round-winner', 'serve-lunch', 'settings', 'start', 'unassign', 'undo-round', 'undo-walkover', 'walkover']);
+  assert.deepEqual(Object.keys(actions).sort(), ['assign', 'board-ready', 'checkin', 'confirm-payment', 'correct-result', 'demo', 'draw', 'media', 'next-round', 'practice-mode', 'remove-team', 'reset', 'round-winner', 'serve-lunch', 'settings', 'start', 'unassign', 'undo-round', 'undo-walkover', 'update-registration', 'walkover']);
   assert.deepEqual(Object.entries(actions).filter(([, a]) => a.admin).map(([k]) => k).sort(), ['correct-result', 'demo', 'draw', 'media', 'practice-mode', 'remove-team', 'reset', 'settings', 'undo-walkover', 'walkover']);
   const s = setup(2); actions.draw.run(s, {}, {}); actions.assign.run(s, { id: 'M01', board: 1 }, { now: 0 }); actions.start.run(s, { id: 'M01' }, { now: 0 });
   const m = s.matches[0]; actions['round-winner'].run(s, { id: 'M01', winner: m.teamA }, { now: 60000, official: 'Asha Admin' }); actions['undo-round'].run(s, { id: 'M01' }, { now: 70000 });
@@ -344,7 +344,7 @@ test('desk roles: admins do everything, officials all but admin actions, the one
   assert.throws(() => checkBoard(s, { id: 'M99' }, umpire), /isn’t assigned to you/);
 });
 test('the one-job roles see no contact numbers or payment details; ID details only at check-in', () => {
-  const s = emptyState(); s.event.paymentRequired = true; s.event.upiQr = 'x';
+  const s = open(); s.event.paymentRequired = true; s.event.upiQr = 'x';
   const [t] = addTeams(s, { ...centre(0), adults: true, teams: [{ name: 'A', players: [player('P1', '9111111111'), player('P2', '9222222222')] }, { name: 'B', players: [player('P3'), player('P4')] }], coordinator: { name: 'Fr. C', mobile: '9900000000' }, payment: { txnRef: 'UTR123456' } });
   for (const role of ['checkin', 'lunch', 'umpire']) {
     const seen = staffTeam(t, role), text = JSON.stringify(seen);

@@ -5,6 +5,8 @@ import { registrationDeadlineText } from './event-deadline.js';
 import { groups, centres, centreTypes, idTypes } from './parishes.js';
 import { registrationPdf, groupRegistrationPdf } from './registration-pdf.js';
 import { analyticsEnabled, analyticsPreference, setAnalyticsPreference, beforeAnalyticsNavigation, updateAnalytics, trackAnalyticsEvent } from './analytics.js';
+import { overlaySetupUrl } from './overlay-view.js';
+import { registrationEditor } from './registration-editor.js';
 const route = () => pagesMode ? (location.hash.slice(1) || '/').split('?')[0] : location.pathname;
 const $ = (s, root = document) => root.querySelector(s);
 const app = $('#app'), modal = $('#modal');
@@ -433,6 +435,7 @@ const isEventAdmin = () => state.user?.role === 'admin';
 const roleNames = { admin: 'Event admin', official: 'Official', checkin: 'Check-in desk', lunch: 'Lunch counter', umpire: 'Umpire', media: 'Media manager' };
 const roleLabel = (role, boards = []) => ['umpire', 'media'].includes(role) && boards?.length ? `${roleNames[role]} · Board${boards.length > 1 ? 's' : ''} ${boards.join(', ')}` : roleNames[role] || roleNames.official;
 const staffRole = () => ['checkin', 'lunch', 'umpire', 'media'].includes(state.user?.role) ? state.user.role : '';
+const streamOverlayLink = (cls = '') => `<a class="${cls}" href="${esc(overlaySetupUrl(location.href, pagesMode, Boolean(state.practice)))}" target="_blank" rel="noopener">${icon('screen')} Stream overlay ${icon('external')}</a>`;
 const myBoards = () => state.user?.boards || [];
 // Lunch coupons on the registration form, scanned at the lunch counter: an event setting.
 const lunchOn = () => Boolean(state.event.lunchCoupons);
@@ -452,14 +455,14 @@ let menuOpen = false;
 function setMenu(open) { menuOpen = open; $('#mobile-menu')?.classList.toggle('open', open); $('.menu-toggle')?.setAttribute('aria-expanded', String(open)); }
 function mobileMenu() {
   const more = navItems().filter(([, , , short]) => !short);
-  return `<button class="menu-toggle ${more.some(([p]) => p === page) ? 'active' : ''}" data-action="menu" aria-label="More options" aria-controls="mobile-menu" aria-expanded="${menuOpen}">${icon('menu')}</button><div class="mobile-menu ${menuOpen ? 'open' : ''}" id="mobile-menu">${state.user ? `<div class="mobile-menu-user"><strong>${esc(state.user.name)}</strong><small>${esc(roleLabel(state.user.role, state.user.boards))}</small></div>` : ''}${more.map(([p, i, text]) => `<a href="${p}" class="${page === p ? 'active' : ''}">${icon(i)} ${text}</a>`).join('')}<a href="/live" target="_blank">${icon('screen')} Live boards</a>${ownPassword() ? `<button data-action="change-password">${icon('lock')} Change password</button>` : ''}<button data-action="logout">${icon('logout')} Sign out</button></div>`;
+  return `<button class="menu-toggle ${more.some(([p]) => p === page) ? 'active' : ''}" data-action="menu" aria-label="More options" aria-controls="mobile-menu" aria-expanded="${menuOpen}">${icon('menu')}</button><div class="mobile-menu ${menuOpen ? 'open' : ''}" id="mobile-menu">${state.user ? `<div class="mobile-menu-user"><strong>${esc(state.user.name)}</strong><small>${esc(roleLabel(state.user.role, state.user.boards))}</small></div>` : ''}${more.map(([p, i, text]) => `<a href="${p}" class="${page === p ? 'active' : ''}">${icon(i)} ${text}</a>`).join('')}<a href="/live" target="_blank">${icon('screen')} Live boards</a>${streamOverlayLink()}${ownPassword() ? `<button data-action="change-password">${icon('lock')} Change password</button>` : ''}<button data-action="logout">${icon('logout')} Sign out</button></div>`;
 }
 function desk() {
   // Any other desk page opens the role's own page.
   const role = staffRole();
   if (role && !staffPages[role].includes(page)) { page = staffNav[role][0][0]; history.replaceState({}, '', pagesMode ? `#${page}` : page); }
   let selected = navItems().find(([p]) => p === page), title = selected?.[2] || (page === '/lunch' ? 'Lunch counter' : 'QR check-in');
-  return `<div class="desk"><aside class="sidebar">${logo(true)}${mobileMenu()}<nav aria-label="Tournament navigation">${navItems().map(([p, i, text, short]) => `<a href="${p}" class="${page === p ? 'active' : ''}${short ? '' : ' more'}">${icon(i)}<span>${text}</span>${short ? `<b>${short}</b>` : ''}${p === '/admin/teams' ? `<small>${state.teams.length}</small>` : ''}</a>`).join('')}</nav><div class="sidebar-bottom"><a class="side-live" href="/live" target="_blank">${icon('screen')} Live boards ${icon('external')}</a><div class="event-mini"><span class="event-mini-icon">C</span><div>CARROMIA ${esc(state.event.year)}<span class="tiny-tag">${state.matches.length ? 'DRAW CREATED' : 'REGISTRATION'}</span></div></div>${ownPassword() ? `<button class="logout" data-action="change-password">${icon('lock')} Change password</button>` : ''}<button class="logout" data-action="logout">${icon('logout')} Sign out</button></div></aside><div class="desk-main"><header class="desk-header"><div class="breadcrumb"><strong>${esc(title)}</strong></div><div class="header-right"><span class="connection" data-connection></span><button class="avatar" data-action="${ownPassword() ? 'account' : 'logout'}" aria-label="${ownPassword() ? 'Your account' : 'Sign out of desk'}" title="${esc(state.user ? `${state.user.name} · ${roleLabel(state.user.role, state.user.boards)}${ownPassword() ? '' : ' · Sign out'}` : 'Sign out of desk')}">${esc((state.user?.name || 'Tournament desk').split(/\s+/).slice(0, 2).map(s => s[0]).join('').toUpperCase())}</button></div></header><main class="desk-content">${!state.teams.length && staffRole() !== 'media' ? `<div class="setup-banner"><span>${icon('coins')} <strong>No teams yet.</strong> Teams appear as they register.</span>${state.practiceAvailable && !state.practice ? `<button class="btn small outline" data-action="practice" data-on="true">Open practice mode ${icon('arrow')}</button>` : pagesMode && !state.practice ? '' : `<button class="btn small outline" data-action="demo">Load sample tournament ${icon('arrow')}</button>`}</div>` : state.demo && !state.practice ? '<div class="demo-strip"><span class="dot"></span> SAMPLE TOURNAMENT <span>Fictional teams</span></div>' : ''}${page === '/admin/teams' ? teamsPage() : page === '/admin/bracket' ? bracketPage() : page === '/admin/results' ? resultsPage() : page === '/admin/settings' ? settingsPage() : page === '/admin/media' && (staffRole() === 'media' || isEventAdmin() || (state.practice && state.user?.role === 'official')) ? mediaAdmin(state) : page === '/admin/officials' && canManageOfficials() ? officialsPage() : page === '/checkin' ? qrCheckinPage() : page === '/lunch' ? lunchCounterPage() : dashboard()}</main><div class="desk-footer">CARROMIA ${esc(state.event.year)}</div></div></div>`;
+  return `<div class="desk"><aside class="sidebar">${logo(true)}${mobileMenu()}<nav aria-label="Tournament navigation">${navItems().map(([p, i, text, short]) => `<a href="${p}" class="${page === p ? 'active' : ''}${short ? '' : ' more'}">${icon(i)}<span>${text}</span>${short ? `<b>${short}</b>` : ''}${p === '/admin/teams' ? `<small>${state.teams.length}</small>` : ''}</a>`).join('')}</nav><div class="sidebar-bottom"><a class="side-live" href="/live" target="_blank">${icon('screen')} Live boards ${icon('external')}</a>${streamOverlayLink('side-live')}<div class="event-mini"><span class="event-mini-icon">C</span><div>CARROMIA ${esc(state.event.year)}<span class="tiny-tag">${state.matches.length ? 'DRAW CREATED' : 'REGISTRATION'}</span></div></div>${ownPassword() ? `<button class="logout" data-action="change-password">${icon('lock')} Change password</button>` : ''}<button class="logout" data-action="logout">${icon('logout')} Sign out</button></div></aside><div class="desk-main"><header class="desk-header"><div class="breadcrumb"><strong>${esc(title)}</strong></div><div class="header-right"><span class="connection" data-connection></span><button class="avatar" data-action="${ownPassword() ? 'account' : 'logout'}" aria-label="${ownPassword() ? 'Your account' : 'Sign out of desk'}" title="${esc(state.user ? `${state.user.name} · ${roleLabel(state.user.role, state.user.boards)}${ownPassword() ? '' : ' · Sign out'}` : 'Sign out of desk')}">${esc((state.user?.name || 'Tournament desk').split(/\s+/).slice(0, 2).map(s => s[0]).join('').toUpperCase())}</button></div></header><main class="desk-content">${!state.teams.length && staffRole() !== 'media' ? `<div class="setup-banner"><span>${icon('coins')} <strong>No teams yet.</strong> Teams appear as they register.</span>${state.practiceAvailable && !state.practice ? `<button class="btn small outline" data-action="practice" data-on="true">Open practice mode ${icon('arrow')}</button>` : pagesMode && !state.practice ? '' : `<button class="btn small outline" data-action="demo">Load sample tournament ${icon('arrow')}</button>`}</div>` : state.demo && !state.practice ? '<div class="demo-strip"><span class="dot"></span> SAMPLE TOURNAMENT <span>Fictional teams</span></div>' : ''}${page === '/admin/teams' ? teamsPage() : page === '/admin/bracket' ? bracketPage() : page === '/admin/results' ? resultsPage() : page === '/admin/settings' ? settingsPage() : page === '/admin/media' && (staffRole() === 'media' || isEventAdmin() || (state.practice && state.user?.role === 'official')) ? mediaAdmin(state) : page === '/admin/officials' && canManageOfficials() ? officialsPage() : page === '/checkin' ? qrCheckinPage() : page === '/lunch' ? lunchCounterPage() : dashboard()}</main><div class="desk-footer">CARROMIA ${esc(state.event.year)}</div></div></div>`;
 }
 // Officials: loaded from the officials Edge Function and cached; refreshed after each change.
 let officials = null, officialsError = '';
@@ -609,6 +612,7 @@ function teamTable() {
     ...(role === 'checkin' ? [] : [['Lunch', lunchCell]]),
     ...(role === 'lunch' ? [] : [['Check-in', checkinCell]]),
     ...(role ? [] : [['Form', formCell]]),
+    ...(role ? [] : [['Edit', t => `<button class="btn tiny outline" type="button" data-action="edit-registration" data-id="${t.id}" aria-label="Edit registration for ${esc(t.name)}">Edit</button>`]]),
     ...(canRemoveTeams() ? [['', t => `<button class="btn tiny danger" data-action="remove-team" data-id="${t.id}" aria-label="Remove ${esc(t.name)}">Remove</button>`]] : [])
   ];
   return teams.length ? `<div class="table-wrap"><table><thead><tr>${columns.map(([h]) => `<th>${h}</th>`).join('')}</tr></thead><tbody>${teams.map(t => `<tr>${columns.map(([, cell]) => `<td>${cell(t)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>` : `<div class="empty"><h3>No teams found</h3><p>${role ? 'Try another search.' : 'Register your first team or try another search.'}</p></div>`;
@@ -741,6 +745,11 @@ document.addEventListener('click', async event => {
     if (action === 'remove-team-entry') { const form = b.form; b.closest('.reg-team').remove(); syncTeamEntries(form); return; }
     b.disabled = true;
     if (action === 'team-download') { b.disabled = false; return teamDownloadDialog(id); }
+    if (action === 'edit-registration') {
+      if (!['admin', 'official'].includes(state.user?.role)) throw new Error('Only event admins and officials can edit registrations.');
+      const currentPhotos = await api('photos');
+      b.disabled = false; return dialog(registrationEditor(team(id), currentPhotos[id]));
+    }
     if (action === 'remove-upi-qr') { b.disabled = false; $('#settings-form [name=upiQr]').value = ''; $('#upi-qr-preview').hidden = true; b.hidden = true; return; }
     if (action === 'photo-full') { const t = team(id), p = Number(b.dataset.player), { url } = await api(`photo-full?team=${encodeURIComponent(id)}&player=${p}`); b.disabled = false; return dialog(`<div class="eyebrow">${esc(id)} · ${esc(t?.name)}</div><h2>${esc(t?.players[p]?.name || 'Player photo')}</h2><img class="payment-proof" src="${url}" alt="Photo of ${esc(t?.players[p]?.name || 'the player')}">`); }
     if (action === 'payment-proof') { const proofs = await api('payment-proofs'); b.disabled = false; return dialog(proofs[id] ? `<div class="eyebrow">${esc(id)}</div><h2>Payment screenshot</h2><img class="payment-proof" src="${proofs[id]}" alt="Payment screenshot for ${esc(id)}">` : '<h2>No screenshot</h2><p>This team gave only a transaction number.</p>'); }
@@ -803,7 +812,7 @@ document.addEventListener('click', async event => {
 document.addEventListener('input', event => { if (event.target.id === 'public-result-search') { resultSearch = event.target.value; $('#public-result-list').innerHTML = publicResultList(); } if (event.target.id === 'public-team-search') { publicSearch = event.target.value; $('#public-team-list').innerHTML = publicTeamCards(); } if (event.target.id === 'team-search') { teamSearch = event.target.value; $('#team-table').innerHTML = teamTable(); labelTables($('#team-table')); } });
 document.addEventListener('change', async event => {
   const el = event.target;
-  if (el.name === 'forane' && el.form?.id === 'registration-form') { const centre = el.form.elements.centre; centre.innerHTML = el.value ? centreOptions(el.value) : '<option value="">Choose the forane first</option>'; centre.disabled = !el.value; }
+  if (el.name === 'forane' && ['registration-form', 'registration-edit-form'].includes(el.form?.id)) { const centre = el.form.elements.centre; centre.innerHTML = el.value ? centreOptions(el.value) : '<option value="">Choose the forane first</option>'; centre.disabled = !el.value; }
   if (['forane', 'centre'].includes(el.name) && el.form?.id === 'registration-form') syncTeamEntries(el.form);
   if (el.matches?.('[data-role-select]')) $('.board-picks', el.form).hidden = !['umpire', 'media'].includes(el.value);
   if (el.name === 'upiQrFile') {
@@ -818,6 +827,16 @@ document.addEventListener('change', async event => {
 document.addEventListener('submit', async event => {
   event.preventDefault(); const form = event.target, fields = Object.fromEntries(new FormData(form)); const button = $('button[type="submit"], button:not([type])', form), errorEl = $('.form-error', form); if (button) button.disabled = true; if (errorEl) errorEl.textContent = '';
   try {
+    if (form.id === 'registration-edit-form') {
+      const [centreType, ...parish] = String(fields.centre || '').split('|');
+      const replacements = await Promise.all([0, 1].map(async i => fields[`photo${i}`]?.size ? { photo: await fullPhoto(fields[`photo${i}`]), thumb: await photoData(fields[`photo${i}`]) } : null));
+      const input = { id: form.dataset.id, expectedVersion: Number(form.dataset.version), name: fields.name, forane: fields.forane, parish: parish.join('|'), centreType,
+        players: [0, 1].map(i => ({ name: fields[`player${i}`], mobile: fields[`mobile${i}`], idType: fields[`idType${i}`], idLast4: fields[`idLast4${i}`] })),
+        primaryContact: Number(fields.primaryContact), lunch: Number(fields.lunch), coordinator: { name: fields.coordinatorName, mobile: fields.coordinatorMobile },
+        payment: { txnRef: fields.txnRef || '', screenshot: fields.paymentShot?.size ? await fullPhoto(fields.paymentShot) : '' }, photos: replacements };
+      await api('update-registration', input);
+      photosFor = null; photos = {}; modal.close(); toast('Registration updated. New form downloads use the updated details.'); await sync(); return;
+    }
     if (form.id === 'gallery-submit-form') {
       await api('gallery-submit', { ...fields, clientId: galleryClientId() });
       form.closest('.gallery-submit-card').innerHTML = `<div class="eyebrow">LINK RECEIVED</div><h1>Thank you for sharing.</h1><p>Your photo or video is waiting for review. It will appear on the wall once approved.</p><a class="btn primary" href="${pagesMode ? '#/gallery' : '/gallery'}">View the photo &amp; video wall</a><button class="btn outline" type="button" data-action="gallery-share-another">Share another link</button>`;

@@ -17,6 +17,7 @@ test('Pages build is portable to a repository subpath and contains only static a
   execFileSync(process.execPath, ['scripts/build-pages.mjs'], { cwd: root });
   const html = readFileSync(join(root, 'dist/index.html'), 'utf8');
   assert.ok(html.includes('src="./app.js"')); assert.ok(!/(href|src)="\//.test(html));
+  for (const asset of ['overlay.html', 'overlay.js', 'overlay-view.js', 'overlay.css']) assert.ok(existsSync(join(root, 'dist', asset)), `Browser source asset ${asset} is published`);
   const manifest = JSON.parse(readFileSync(join(root, 'dist/manifest.webmanifest'), 'utf8'));
   assert.equal(manifest.start_url, './'); assert.equal(manifest.scope, './');
   for (const icon of manifest.icons) assert.ok(existsSync(join(root, 'dist', icon.src)));
@@ -121,6 +122,27 @@ function fakeSupabase() {
         try { const team = teamForm(db.rows[body.p_event].state, body.p_team_id, body.p_mobile); return reply(200, { team, photos: db.photos.filter(p => p.event === body.p_event && p.team_id === team.id).map(p => p.path) }); }
         catch (error) { return /doesn’t match/.test(error.message) ? reply(200, { error: error.message }) : reply(400, { message: error.message }); }
       }
+      case '/rest/v1/rpc/save_registration': {
+        if (!['admin', 'official'].includes(caller?.official.role)) return reply(403, { message: 'Only event admins and officials can edit registrations.' });
+        const target = body.p_id, row = db.rows[target];
+        if (db.raceOnce) { db.raceOnce = false; row.version++; row.state.event.venue = 'Changed elsewhere'; }
+        if (body.p_expected !== row.version) return reply(409, { message: 'The event was changed from another session. Please try again.' });
+        for (const [player, path] of Object.entries(body.p_photos)) {
+          if (!db.files.has(`team-files/${path}`) || !db.files.has(`team-files/${thumbPath(path)}`)) return reply(400, { message: 'Missing replacement picture.' });
+          db.photos = db.photos.filter(p => !(p.event === target && p.team_id === body.p_team_id && p.player === Number(player)));
+          db.photos.push({ event: target, team_id: body.p_team_id, player: Number(player), path });
+        }
+        if (body.p_payment) {
+          const team = body.p_state.teams.find(t => t.id === body.p_team_id);
+          for (const member of body.p_state.teams.filter(t => t.id === team.id || (team.group && t.group?.id === team.group.id))) {
+            db.proofs = db.proofs.filter(p => !(p.event === target && p.team_id === member.id));
+            db.proofs.push({ event: target, team_id: member.id, path: body.p_payment });
+          }
+        }
+        db.rows[target] = { version: row.version + 1, state: body.p_state }; db.pub[target] = { version: row.version + 1, state: publicState(body.p_state) };
+        db.saves.push({ by: caller.official.name, action: 'update-registration', event: target, detail: body.p_detail });
+        return reply(200, db.rows[target].version);
+      }
       case '/rest/v1/rpc/save_tournament': {
         if (!caller?.official) return reply(403, { message: 'Sign in as a tournament official.' });
         const target = body.p_id ?? 'main', row = db.rows[target];
@@ -154,6 +176,10 @@ test('live Pages runtime: public view, official sign-in, roles, conflict retry, 
   await remoteApi('login', { email: 'Omar@example.org ', password: 'official-pass' });
   state = await remoteApi('state');
   assert.equal(state.isAdmin, true); assert.deepEqual(state.user, { name: 'Omar Official', role: 'official', boards: [] }); assert.equal(state.teams[0].players[0].mobile, '9000000000'); assert.ok(state.teams[0].checkinToken, 'officials can print a team’s form again'); assert.equal(state.practice, false);
+  const overlayState = await remoteApi('public-state');
+  assert.equal(overlayState.isAdmin, false, 'stream overlays always use the public copy, even while signed in');
+  assert.equal(overlayState.teams[0].players[0].mobile, undefined);
+  assert.equal(overlayState.teams[0].checkinToken, undefined);
   await remoteApi('unassign', { id: 'M01' }); await remoteApi('assign', { id: 'M05', board: 1 }); await remoteApi('start', { id: 'M05' });
   assert.equal(db.rows.main.state.matches.find(m => m.id === 'M05').status, 'playing');
   assert.equal(db.public.state.matches.find(m => m.id === 'M05').status, 'playing'); assert.ok(!JSON.stringify(db.public).includes('9000000000'), 'public copy has no mobiles');
@@ -311,6 +337,31 @@ test('live Pages runtime: check-in, lunch and umpire accounts do only their own 
   await assert.rejects(remoteApi('board-ready', { board: 1 }), /isn’t assigned to you/);
   assert.deepEqual(db.saves.map(s => `${s.by}:${s.action}`), ['Cara Checkin:checkin', 'Lena Lunch:serve-lunch', 'Lena Lunch:serve-lunch', 'Uma Umpire:start', 'Uma Umpire:round-winner', 'Uma Umpire:next-round', 'Uma Umpire:round-winner', 'Uma Umpire:board-ready']);
 });
+test('live Pages registration edits stage new files, preserve state and retry unrelated concurrent saves', async t => {
+  const db = fakeSupabase(), memory = new Map(), realFetch = globalThis.fetch;
+  globalThis.localStorage = { getItem: key => memory.get(key) ?? null, setItem: (key, value) => memory.set(key, value), removeItem: key => memory.delete(key) };
+  globalThis.fetch = db.fetch; globalThis.location = { origin: 'https://sajinct.github.io', pathname: '/carromia/', search: '' };
+  t.after(() => { globalThis.fetch = realFetch; delete globalThis.localStorage; delete globalThis.location; });
+  const { remoteApi } = await import('../dist/runtime.js');
+  await remoteApi('login', { email: 'asha@example.org', password: 'admin-pass' }); await remoteApi('reset', { confirm: 'RESET' });
+  await remoteApi('settings', { gameMinutes: 10, gamesPerMatch: 3, resetMinutes: 5, restMinutes: 0, registrationOpen: true, paymentRequired: true, upiId: 'demo@upi', registrationDeadline: '' });
+  await remoteApi('logout');
+  const { team } = await remoteApi('register', { ...centre(1), name: 'Original', adults: true, players: [player('One'), player('Two')], payment: { txnRef: 'UTR123456', screenshot: photo } });
+  await remoteApi('login', { email: 'omar@example.org', password: 'official-pass' }); await remoteApi('confirm-payment', { id: team.id });
+  const originalPhotos = (await remoteApi('photos'))[team.id], originalToken = team.checkinToken;
+  const input = { ...team, expectedVersion: 0, name: 'Corrected', players: team.players.map(p => ({ ...p, name: `${p.name} corrected` })), lunch: 1, primaryContact: 1,
+    payment: { txnRef: 'NEW654321', screenshot: photo }, photos: [{ photo, thumb: photo }, null] };
+  db.raceOnce = true;
+  await remoteApi('update-registration', input);
+  let state = await remoteApi('state'); assert.equal(state.event.venue, 'Changed elsewhere'); assert.equal(state.teams[0].name, 'Corrected'); assert.equal(state.teams[0].status, 'confirmed'); assert.equal(state.teams[0].checkinToken, originalToken);
+  const updatedPhotos = (await remoteApi('photos'))[team.id]; assert.notEqual(updatedPhotos[0], originalPhotos[0]); assert.equal(updatedPhotos[1], originalPhotos[1]);
+  assert.ok((await remoteApi('payment-proofs'))[team.id]); assert.equal(db.public.state.teams[0].payment, undefined);
+  assert.ok(!JSON.stringify(db.saves.at(-1)).includes('base64'), 'audit details exclude uploaded pictures');
+  await assert.rejects(remoteApi('update-registration', input), /changed while you were editing/);
+  await remoteApi('logout'); await remoteApi('login', { email: 'cara@example.org', password: 'checkin-pass' });
+  await assert.rejects(remoteApi('update-registration', { ...input, expectedVersion: 1 }), /Check-in desk role/);
+});
+
 test('live Pages runtime: a parish registers several teams at once; the coordinator downloads every form', async t => {
   const db = fakeSupabase(), memory = new Map(), realFetch = globalThis.fetch;
   globalThis.localStorage = { getItem: key => memory.get(key) ?? null, setItem: (key, value) => memory.set(key, value), removeItem: key => memory.delete(key) };
