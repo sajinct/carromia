@@ -1,3 +1,4 @@
+import { finalMatch, thirdPlaceMatch } from '../public/fixture.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { emptyState, addTeam, serveLunch, createDraw, assign, start, roundWinner, nextRound, undoRound, eligible, updateSettings, boardReady, removeTeam, practiceEvent, publicState, walkover, undoWalkover, correctResult, unassign, actions, practiceMode, registrationStatus, parishKey, playerPhotos, upiQrImage, seedDemo, paymentProof, confirmPayment, checkIn, isConfirmed, addTeams, teamForm, groupForm, groupTeams, publicTeam, refusal, checkBoard, staffTeam, teamsFor } from '../lib/tournament.mjs';
@@ -180,11 +181,17 @@ test('registration limits: team slots, teams per parish, deadline and lunch book
   const old = emptyState(); for (const key of ['maxTeams', 'maxTeamsPerParish', 'registrationDeadline', 'entryFee']) delete old.event[key];
   assert.equal(registrationStatus(old, before).slotsLeft, 64); assert.equal(registrationStatus(old, after).open, false);
 });
-test('draw handles every team count from 2 to 128 with one champion and n-1 actual matches', () => {
+test('draw handles 2 to 128 teams with a champion and a playoff for four or more teams', () => {
   for (let n = 2; n <= 128; n++) {
     const s = setup(n); createDraw(s, false); s.event.resetMinutes = 0; let clock = 1000000;
     while (s.matches.some(m => m.status !== 'completed')) { const m = s.matches.find(m => m.status === 'ready'); assert.ok(m, `No ready match for ${n} teams`); assign(s, m.id, 1, clock); start(s, m.id, clock); clock += 600000; play(s, m.id, B_WINS, clock); }
-    assert.ok(s.matches.at(-1).winner); assert.equal(s.matches.filter(m => !m.bye).length, n - 1);
+    const final = finalMatch(s), third = thirdPlaceMatch(s);
+    assert.ok(final.winner); assert.equal(s.matches.filter(m => !m.bye).length, n - 1 + (n >= 4 ? 1 : 0));
+    if (n >= 4) {
+      assert.ok(third.winner); assert.notEqual(third.winner, final.winner);
+      assert.equal(new Set([final.teamA, final.teamB, third.teamA, third.teamB]).size, 4);
+      assert.deepEqual(third.sources, final.sources);
+    } else assert.equal(third, undefined);
   }
 });
 test('registration closes and a second draw is rejected', () => { const s = setup(4); createDraw(s); assert.equal(s.event.registrationOpen, false); assert.throws(() => createDraw(s), /already exists/); assert.throws(() => addTeam(s, {}), /closed/); });

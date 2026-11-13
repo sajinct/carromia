@@ -4,6 +4,8 @@ A responsive tournament website and installable web app for CARROMIA 2026, the f
 
 **User manual** for the tournament desk team (roles, permissions and every screen, with screenshots): [docs/user-manual.md](docs/user-manual.md), or the printable [PDF](docs/user-manual.pdf).
 
+New knockout draws with at least four confirmed teams include a **third-place playoff**. The semifinal winners advance to the final; the two losers enter the playoff once both semifinals finish. Officials assign and score it like any other match, with the same check-in, rest and board-reset rules. Results show the champion, runner-up and third-place winner separately. A semifinal result can be corrected only while both dependent matches are uncalled and unplayed. For 19 teams, there are 13 byes and 19 played matches including the playoff. Previously saved draws retain their fixtures; this change needs no database migration or Edge Function deployment.
+
 ## Live site (GitHub Pages + Supabase)
 
 https://carromia.marymathachurchvijayanagar.com is the live event site. The static app talks to Supabase directly: every visitor sees the same boards and bracket, updated within a second or two over Supabase Realtime, and officials run the desk from any phone or laptop.
