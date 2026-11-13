@@ -1,10 +1,47 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { emptyState, seedDemo, updateMedia, publicState, refusal, actions, freshEvent, checkBoard, teamsFor, submitGallery } from '../lib/tournament.mjs';
-import { socialLink, boardStream, boardDisplay, visibleLiveBoards, publicBoardLayout } from '../public/social.js';
-import { streamCard, streamOnlyBoard, liveBoardControls, galleryContent, mediaAdmin, renderMediaPage, gallerySubmissionForm } from '../public/media-view.js';
+import { socialLink, boardStream, boardDisplay, visibleLiveBoards, publicBoardLayout, publicEventStream } from '../public/social.js';
+import { streamCard, streamOnlyBoard, eventStreamCard, liveBoardControls, galleryContent, mediaAdmin, renderMediaPage, gallerySubmissionForm } from '../public/media-view.js';
+import { ruleSections, importantPhrases } from '../public/info.js';
 
 const video = 'https://youtu.be/M7lc1UVf-VE';
+
+test('main event stream has independent visibility, preserves its draft link when hidden and supports removal', () => {
+  const state = seedDemo();
+  assert.equal(eventStreamCard(state), '');
+  updateMedia(state, { operation: 'settings', streamsEnabled: false, boardLayout: state.boards.map(b => ({ boardId: b.id, visible: false, showInfo: false })) });
+  updateMedia(state, { operation: 'event-stream', title: 'Prize distribution', url: video, enabled: true });
+  assert.deepEqual(visibleLiveBoards(state), []);
+  let pub = publicState(state);
+  assert.equal(pub.media.streamsEnabled, false); assert.equal(pub.media.eventStream.enabled, true);
+  assert.match(eventStreamCard(pub), /Prize distribution/); assert.match(eventStreamCard(pub), /iframe/);
+  assert.match(eventStreamCard(pub), /autoplay=1/); assert.match(eventStreamCard(pub), /mute=1/);
+  const saved = state.media.eventStream.url;
+  updateMedia(state, { operation: 'event-stream', enabled: false });
+  assert.equal(state.media.eventStream.url, saved); assert.equal(eventStreamCard(publicState(state)), '');
+  assert.deepEqual(publicState(state).media.eventStream, { enabled: false, title: '', url: '' });
+  updateMedia(state, { operation: 'event-stream', enabled: true }); assert.match(eventStreamCard(state), /iframe/);
+  updateMedia(state, { operation: 'event-stream', remove: true }); assert.equal(state.media.eventStream, undefined); assert.equal(eventStreamCard(state), '');
+});
+
+test('main event stream validates input, escapes titles and is managed only through the admin controls', () => {
+  const state = seedDemo();
+  for (const input of [{ enabled: true }, { enabled: true, url: 'javascript:alert(1)' }, { enabled: false, url: 'https://evil.example/live' }, { enabled: true, url: video, title: 'X'.repeat(121) }]) {
+    const before = structuredClone(state); assert.throws(() => updateMedia(state, { operation: 'event-stream', ...input })); assert.deepEqual(state, before);
+  }
+  updateMedia(state, { operation: 'event-stream', enabled: true, url: video, title: '<script>unsafe()</script>' });
+  assert.match(eventStreamCard(state), /&lt;script&gt;/); assert.doesNotMatch(eventStreamCard(state), /<script>/);
+  state.user = { role: 'admin' }; assert.match(mediaAdmin(state), /id="event-stream-form"/); assert.match(mediaAdmin(state), /Show main event stream on Live boards/);
+  state.user = { role: 'media', boards: [1] }; assert.doesNotMatch(mediaAdmin(state), /id="event-stream-form"|event-stream-remove/);
+  assert.throws(() => checkBoard(state, { operation: 'event-stream' }, state.user), /Only an event admin/);
+  assert.deepEqual(publicEventStream({ eventStream: { enabled: false, title: 'Hidden title', url: 'Hidden draft' } }), { enabled: false, title: '', url: '' });
+});
+
+test('rules no longer require thumb-only strokes', () => {
+  assert.doesNotMatch(JSON.stringify(ruleSections), /thumbing-only|all strokes.*thumb/i);
+  assert.ok(!importantPhrases.includes('thumbing-only'));
+});
 
 test('live layout defaults to every scorecard and permits a single stream-only board for the final', () => {
   const state = seedDemo(), before = structuredClone({ teams: state.teams, boards: state.boards, matches: state.matches });

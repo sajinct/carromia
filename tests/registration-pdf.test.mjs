@@ -12,6 +12,7 @@ test('registration PDF: team details, check-in QR, attestation and the rule book
   const doc = registrationPdf(jsPDF, { team, event: defaults, qr, photos: [photo, photo] });
   const pdf = doc.output();
   assert.ok(pdf.startsWith('%PDF-')); assert.ok(doc.getNumberOfPages() >= 2, 'the rule book follows the form');
+  assert.doesNotMatch(pdf, /All strokes must be played|thumbing-only|thumbing-game/, 'downloaded rules omit the retired thumb-only requirement');
   for (const text of [team.id, team.name, team.parish, team.forane, team.players[0].name, `Ends in ${team.players[0].idLast4}`, 'Attestation by the Parish Priest', 'Parish seal', 'FOR OFFICE USE', ruleSections[0].title, ruleSections.at(-1).title]) assert.ok(pdf.includes(text), `the PDF shows "${text}"`);
   // The QR code and the player photo (the two test photos are identical, so the PDF stores it once).
   assert.equal((pdf.match(/\/Subtype \/Image/g) || []).length, 2);

@@ -1,4 +1,4 @@
-import { socialLink, boardStream, boardDisplay } from './social.js';
+import { socialLink, boardStream, boardDisplay, publicEventStream } from './social.js';
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
 function embed(url, title, live = false) {
@@ -16,6 +16,12 @@ export function streamCard(state, boardId, matchId) {
 }
 export function streamOnlyBoard(state, boardId, matchId) {
   return `<article id="board-${boardId}" tabindex="-1" class="board-card stream-only" aria-label="Board ${boardId} live stream">${streamCard(state, boardId, matchId)}</article>`;
+}
+
+export function eventStreamCard(state) {
+  const stream = publicEventStream(state.media);
+  if (!stream.enabled || !stream.url) return '';
+  return `<section class="panel main-event-stream" aria-label="Main event stream"><header><div><div class="eyebrow">MAIN EVENT</div><h2>${esc(stream.title)}</h2></div></header>${embed(stream.url, stream.title, true)}</section>`;
 }
 
 export function liveBoardControls(state, readOnly = false) {
@@ -38,6 +44,7 @@ export function mediaAdmin(state) {
   const matches = state.matches.filter(m => !scoped || assigned.includes(m.board));
   const media = state.media || {}, streams = (media.streams || []).filter(s => !scoped || (s.matchId ? matches.some(m => m.id === s.matchId) : assigned.includes(s.boardId)));
   const posts = media.gallery || [];
+  const event = media.eventStream || {};
   const streamForm = (boardId, matchId = '') => {
     const stream = streams.find(s => matchId ? s.matchId === matchId : !s.matchId && s.boardId === boardId);
     return `<form class="media-stream-form" data-board="${boardId || ''}" data-match="${esc(matchId)}"><h3>${matchId ? `Match ${esc(matchId)}` : `Board ${boardId}`}</h3><label>Stream link<input name="url" type="url" maxlength="2000" value="${esc(stream?.url)}" placeholder="https://…"></label><label class="checkbox-label"><input type="checkbox" name="enabled" ${stream?.enabled ? 'checked' : ''}> Show this stream</label><p class="form-error" role="alert"></p><button class="btn outline small" type="submit">Save stream</button>${stream ? `<button class="btn outline small" type="button" data-action="media-remove-stream" data-board="${boardId || ''}" data-match="${esc(matchId)}">Remove link</button>` : ''}</form>`;
@@ -48,6 +55,7 @@ export function mediaAdmin(state) {
       <p class="form-note">Broadcast using YouTube or Facebook, then paste the specific broadcast link below. Instagram live links open on Instagram. Content must be public and allow embedding.</p>
       <a class="text-link" href="/live" target="_blank">Preview Live boards ↗</a> · <a class="text-link" href="/gallery" target="_blank">Preview gallery ↗</a>
     </section>
+    <section class="panel settings-panel"><h2>Main event stream</h2><p>Show the inauguration, prize distribution and other stage events above the board streams. This stream has its own show/hide switch and works even when all board streams are hidden.</p>${scoped ? `<p class="form-note">${event.enabled ? 'The main event stream is shown.' : 'The main event stream is hidden.'} An event admin manages this stream.</p>` : `<form id="event-stream-form"><label>Stream title<input name="title" maxlength="120" value="${esc(event.title || 'Main event stream')}" placeholder="e.g. Inauguration or Prize distribution"></label><label>Stream link<input name="url" type="url" maxlength="2000" value="${esc(event.url)}" placeholder="https://…"></label><label class="checkbox-label"><input name="enabled" type="checkbox" ${event.enabled ? 'checked' : ''}> Show main event stream on Live boards</label><p class="form-note">Uncheck to hide the stream while keeping its saved link.</p><p class="form-error" role="alert"></p><button class="btn primary small" type="submit">Save main event stream</button>${event.url ? '<button class="btn outline small" type="button" data-action="event-stream-remove">Remove main event stream</button>' : ''}</form>`}</section>
     <section class="panel settings-panel"><h2>Board streams</h2><p>Board links stay with the board for successive matches. A match link takes priority; a disabled match link hides the stream for that match.</p><div class="media-stream-grid">${boards.map(b => streamForm(b.id)).join('')}</div></section>
     <section class="panel settings-panel"><h2>Match streams</h2>
       ${matches.length ? `<form id="media-match-form"><div class="form-row"><label>Match<select name="matchId" required><option value="">Choose match</option>${matches.map(m => `<option value="${esc(m.id)}">${esc(m.id)} · ${esc(m.roundName)}${m.board ? ` · Board ${m.board}` : ''}</option>`).join('')}</select></label><label>Stream link<input name="url" type="url" maxlength="2000" required></label></div><label class="checkbox-label"><input name="enabled" type="checkbox" checked> Show this stream</label><p class="form-error" role="alert"></p><button class="btn outline small" type="submit">Save match stream</button></form>` : `<p>${scoped ? 'Matches appear here after the desk assigns them to your boards.' : 'Create the draw to add match streams.'}</p>`}

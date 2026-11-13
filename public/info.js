@@ -67,7 +67,7 @@ export const goodToKnow = [
 
 // Emphasis for the public home and rules pages; the underlying wording stays plain text.
 export const importantPhrases = [
-  'thumbing-only', 'two registered players', 'best of three boards', 'win two boards',
+  'two registered players', 'best of three boards', 'win two boards',
   '10 minutes', '30 minutes', 'fewer assigned pieces remaining', 'No point scoring',
   'Personal strikers are not permitted', 'same stroke or the immediately following stroke',
   'properly pocketed and covered by either team', 'loss of the board',
@@ -86,7 +86,6 @@ export const importantPhrases = [
 export const ruleSections = [
   { title: 'General format & tournament structure', rules: [
     'The tournament follows the All India Carrom Federation (AICF) Laws of Carrom, except for the specific tournament modifications stated below.',
-    'This is a thumbing-only tournament. All strokes must be played using the thumb.',
     'Each team consists of two registered players. Four players participate in each match, with partners seated opposite each other.',
     'Each match is the best of three boards. The first team to win two boards wins the match. Each timed round on the tournament app represents one board. Players move anticlockwise to the next right-hand seating position after each board.',
     'The tournament follows a knockout format. A third-place playoff will be held between the two teams that lose in the semifinals.'

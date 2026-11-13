@@ -161,7 +161,7 @@ export function registrationPdf(jsPDF, { team, event, qr = '', lunchQr = '', pho
   if (rules) {
     doc.addPage(); y = pageTop('Rule book');
     font(9, 'normal', muted);
-    const intro = doc.splitTextToSize(`CARROMIA ${event.year || ''} is an open doubles, thumbing-game knockout. Every match is ${formatText(event)}. Each round represents one board.`, W - 2 * M);
+    const intro = doc.splitTextToSize(`CARROMIA ${event.year || ''} is an open doubles knockout. Every match is ${formatText(event)}. Each round represents one board.`, W - 2 * M);
     text(intro, M, y); y += intro.length * 4 + 4;
     let number = 0;
     for (const section of ruleSections) {

@@ -52,9 +52,16 @@ export function visibleLiveBoards(state) {
   });
 }
 
+export function publicEventStream(media = {}) {
+  const stream = media?.eventStream, enabled = stream?.enabled === true;
+  return { enabled, title: enabled ? (typeof stream.title === 'string' && stream.title ? stream.title : 'Main event stream') : '',
+    url: enabled && typeof stream.url === 'string' ? stream.url : '' };
+}
+
 export function publicMedia(media = {}) {
   return { streamsEnabled: media.streamsEnabled === true, galleryEnabled: media.galleryEnabled === true,
     boardLayout: publicBoardLayout(media),
+    eventStream: publicEventStream(media),
     streams: media.streamsEnabled ? (media.streams || []).map(({ boardId, matchId, enabled, url }) => ({ boardId, matchId, enabled, url: enabled ? url : '' })) : [],
     gallery: media.galleryEnabled ? (media.gallery || []).filter(p => p.status === 'approved').map(({ id, url, title, kind, status }) => ({ id, url, title, kind, status })) : [] };
 }

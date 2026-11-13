@@ -39,6 +39,8 @@ async function mediaDatabase(t, restricted = false) {
   await db.exec(publicMigration); await db.exec(publicMigration);
   const layoutMigration = migration('20261112010000_carromia_live_board_layout.sql');
   await db.exec(layoutMigration); await db.exec(layoutMigration);
+  const eventMigration = migration('20261113000000_carromia_event_stream.sql');
+  await db.exec(eventMigration); await db.exec(eventMigration);
   return db;
 }
 
@@ -52,6 +54,7 @@ test('PostgreSQL enforces assigned-board media rights even for crafted save requ
   const seed = seedDemo();
   const layout = seed.boards.map(b => ({ boardId: b.id, visible: b.id === 1, showInfo: false }));
   updateMedia(seed, { operation: 'settings', streamsEnabled: true, galleryEnabled: true, boardLayout: layout });
+  updateMedia(seed, { operation: 'event-stream', title: 'Inauguration', url: 'https://youtu.be/M7lc1UVf-VE', enabled: true });
   for (const boardId of [1, 2]) {
     updateMedia(seed, { operation: 'stream', boardId, enabled: true, url: 'https://youtu.be/M7lc1UVf-VE' });
     updateMedia(seed, { operation: 'add', boardId, title: `Board ${boardId}`, kind: 'photo', url: `https://instagram.com/p/BOARD${boardId}/` });
@@ -76,6 +79,7 @@ test('PostgreSQL enforces assigned-board media rights even for crafted save requ
   const publicRow = (await db.query('select state from public.tournament_public where id=$1', ['main'])).rows[0];
   assert.deepEqual(publicRow.state, publicState(row.state), 'SQL and JS public copies agree, including shared-gallery approvals and pending filtering');
   assert.deepEqual(publicRow.state.media.boardLayout, layout, 'public screens receive the same per-board display choices');
+  assert.equal(publicRow.state.media.eventStream.title, 'Inauguration');
 
   const unowned = [
     s => updateMedia(s, { operation: 'stream', boardId: 2, enabled: false, url: 'https://youtu.be/M7lc1UVf-VE' }),
@@ -88,6 +92,8 @@ test('PostgreSQL enforces assigned-board media rights even for crafted save requ
   await assert.rejects(save(s => { s.media.streamsEnabled = false; }), /Only an event admin/);
   await assert.rejects(save(s => { s.media.boardLayout[0].visible = false; }), /Only an event admin/);
   await assert.rejects(save(s => { s.media.boardLayout[0].showInfo = true; }, 'practice'), /Only an event admin/);
+  await assert.rejects(save(s => updateMedia(s, { operation: 'event-stream', enabled: false })), /Only an event admin/);
+  await assert.rejects(save(s => updateMedia(s, { operation: 'event-stream', title: 'Unapproved change' }), 'practice'), /Only an event admin/);
   await assert.rejects(save(s => { s.media.galleryEnabled = false; }, 'practice'), /Only an event admin/);
   for (const edit of [s => { s.teams[0].checkedIn = false; }, s => { s.matches[0].status = 'playing'; }, s => { s.boards[0].availableAt = 999; }]) {
     await assert.rejects(save(edit, 'main', 'start'), /only change streams and gallery/);
@@ -100,10 +106,16 @@ test('PostgreSQL enforces assigned-board media rights even for crafted save requ
   await save(s => updateMedia(s, { operation: 'review', id: s.media.gallery.find(g => g.title === 'New photo').id, status: 'pending' }));
   await as(adminId);
   await save(s => updateMedia(s, { operation: 'settings', streamsEnabled: false, galleryEnabled: false }));
+  await save(s => updateMedia(s, { operation: 'event-stream', enabled: false }));
+  assert.equal((await current()).state.media.eventStream.url, 'https://www.youtube.com/watch?v=M7lc1UVf-VE');
+  assert.deepEqual((await db.query("select state->'media'->'eventStream' as stream from public.tournament_public where id='main'")).rows[0].stream, { enabled: false, title: '', url: '' }, 'hidden event-stream drafts stay private');
   await db.query('update public.officials set role=$1,boards=$2 where user_id=$3', ['official', [], mediaId]);
   await as(mediaId);
   await assert.rejects(save(s => updateMedia(s, { operation: 'stream', boardId: 1, remove: true })), /admin or an assigned media manager/);
   await save(s => updateMedia(s, { operation: 'stream', boardId: 2, remove: true }), 'practice');
+  await save(s => updateMedia(s, { operation: 'event-stream', title: 'Practice ceremony', enabled: true }), 'practice');
+  assert.equal((await current('main')).state.media.eventStream.enabled, false);
+  assert.equal((await current('practice')).state.media.eventStream.title, 'Practice ceremony');
 });
 
 

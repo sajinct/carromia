@@ -471,6 +471,7 @@ test('Pages runtime syncs streams, board layout and gallery approvals and reject
   await remoteApi('media', { operation: 'settings', streamsEnabled: true, galleryEnabled: true });
   const boardLayout = [1, 2, 3, 4].map(boardId => ({ boardId, visible: boardId === 1, showInfo: false }));
   await remoteApi('media', { operation: 'settings', streamsEnabled: true, galleryEnabled: true, boardLayout });
+  await remoteApi('media', { operation: 'event-stream', title: 'Inauguration', url: 'https://youtu.be/M7lc1UVf-VE', enabled: true });
   await remoteApi('media', { operation: 'stream', boardId: 1, url: 'https://youtu.be/M7lc1UVf-VE', enabled: true });
   await remoteApi('media', { operation: 'add', url: 'https://instagram.com/p/ABC123/', title: 'Opening day', kind: 'photo' });
   const id = db.rows.main.state.media.gallery[0].id;
@@ -480,7 +481,12 @@ test('Pages runtime syncs streams, board layout and gallery approvals and reject
   await remoteApi('logout');
   const pub = await remoteApi('state'); assert.equal(pub.media.gallery.length, 1); assert.equal(pub.media.streams.length, 1);
   assert.deepEqual(pub.media.boardLayout, boardLayout, 'public viewers receive saved visibility and scorecard switches');
+  assert.equal(pub.media.eventStream.title, 'Inauguration'); assert.equal(pub.media.eventStream.enabled, true);
   await assert.rejects(remoteApi('media', { operation: 'review', id, status: 'rejected' }), /Sign in/);
+  await remoteApi('login', { email: 'asha@example.org', password: 'admin-pass' });
+  await remoteApi('media', { operation: 'event-stream', enabled: false }); await remoteApi('logout');
+  assert.equal((await remoteApi('state')).media.eventStream.url, '');
+  assert.ok(db.rows.main.state.media.eventStream.url, 'hiding retains the saved link privately');
 });
 
 
