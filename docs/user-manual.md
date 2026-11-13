@@ -103,7 +103,7 @@ Everyone who signs in to the desk has **one** role. An event admin picks the rol
 | Serve a lunch, or undo one (list or coupon QR) | — | ✅ | ✅ | — | ✅ | — |
 | Download a team's PDF or send its WhatsApp link from the desk | — | ✅ | ✅ | — | — | — |
 | Bracket and Results pages, export results | — | ✅ | ✅ | — | — | — |
-| **Create the knockout draw** | — | ✅ | — | — | — | — |
+| **Create or recreate the knockout draw** | — | ✅ | — | — | — | — |
 | **Award or undo a walkover** | — | ✅ | — | — | — | — |
 | **Correct a result** | — | ✅ | — | — | — | — |
 | **Remove a team** (before the draw) | — | ✅ | — | — | — | — |
@@ -437,7 +437,7 @@ If the email already has an account, the person keeps their password unless you 
 
 Confirming payments is also open to officials: see [7.1](#71-teams-payments-and-forms).
 
-**Remove a team** (admins, before the draw only): in **Teams & check-in**, press **Remove** on the team's row, then **Remove team**. This deletes the team and its players' details, and the team ID is never reused. Use it for duplicates and withdrawals. After the draw, teams can't be removed. Use a **walkover** instead.
+**Remove a team** (admins, before the draw only): in **Teams & check-in**, press **Remove** on the team's row, then **Remove team**. This deletes the team and its players' details, and the team ID is never reused. Use it for duplicates and withdrawals. After the draw, clear it first with **Recreate draw → Clear draw to update teams first**, provided play has not started and no result has been recorded. Once play starts, use a **walkover** instead.
 
 ![Remove team](screenshots/teams-remove-dialog.png)
 
@@ -451,11 +451,23 @@ When check-in is done (or nearly done):
 
 ![Create the draw](screenshots/draw-dialog.png)
 
-The teams are shuffled into a single-elimination bracket. Byes are added automatically when the number isn't a power of two. The rounds are named *Round of 16*, *Quarterfinals*, *Semifinals* and *Final*. **Registration closes.** The draw can't be changed afterwards, except by starting a fresh event.
+The teams are shuffled into a single-elimination bracket. Byes are added automatically when the number isn't a power of two. The rounds are named *Round of 16*, *Quarterfinals*, *Semifinals* and *Final*. Draws with at least four confirmed teams also include a **Third-place playoff** between the semifinal losers. **Registration closes.** An admin can recreate or clear the draw before any match starts or a result is recorded. Automatic byes do not count as played matches.
 
 | Before the draw | After the draw |
 |---|---|
 | ![Empty bracket](screenshots/bracket-empty.png) | ![Bracket created](screenshots/bracket-created.png) |
+
+#### Recreating the draw before play starts
+
+1. Open **Match control** or **Bracket** and press **Recreate draw**.
+2. Choose **Recreate using the current confirmed teams** to shuffle those teams again, or **Clear draw to update teams first** to make additions or removals before generating another draw.
+3. Download a backup if needed, type **REDRAW**, then press **Confirm draw change**.
+
+Registrations, payment confirmations, player photos, check-ins, lunch records, event settings and activity history are kept. Old fixtures and board calls are cleared, and the boards become available. Stream links assigned to match numbers are removed; board streams, the main event stream, gallery and live display settings are kept.
+
+After **Clear draw**, registration stays closed. Remove withdrawn teams on **Teams & check-in**. To accept new teams, reopen registration in **Event settings** and check the registration deadline and limits. Confirm any new payments, then create the draw again.
+
+Once a match starts or a result (including a walkover) is recorded, the draw is locked. An outdated confirmation is also refused if another official changes the draw or confirmed team list; close the dialog and review it again. Practice changes affect only the practice event.
 
 ### 6.5 Walkovers
 
@@ -807,7 +819,7 @@ It also has two ways to start over:
 | *This isn't part of the … role.* / *This board isn't assigned to you.* | Your role doesn't cover this action. Ask an official or admin. |
 | *Start round N first.* | The previous round is decided. Press **Start round N** before marking a winner. |
 | *M07 has already been played, so this result can no longer be changed.* | A correction is too late: the winner's next match has started. |
-| *Teams can't be removed after the draw is created.* | Use a **walkover** instead. |
+| *Teams can't be removed after the draw is created.* | Before play starts, clear the draw with **Recreate draw**. Once play starts, use a **walkover** instead. |
 | *Registration is closed for this draw.* / *Registration closed on …* / *All 64 team slots are taken.* | Registration is closed. An admin can change the limits in Settings before the draw. |
 | *… already has 4 teams registered, the most allowed for one parish.* | That parish has reached its limit. |
 | *That mobile number doesn't match this team's primary contact or parish coordinator.* | Use the number given at registration, as the last 10 digits. |

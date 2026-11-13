@@ -38,7 +38,7 @@ function signIn(res, user) {
   const token = randomBytes(32).toString('hex'); sessions.set(token, { expires: Date.now() + 12 * 3600000, user });
   res.setHeader('Set-Cookie', `carromia_session=${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=43200${process.env.PUBLIC_URL?.startsWith('https:') ? '; Secure' : ''}`);
 }
-const auditDetail = ({ token, confirm, password, ...input }) => input;
+const auditDetail = ({ token, confirm, password, expectedDraw, ...input }) => input;
 function send(res, status, value) { res.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }); res.end(JSON.stringify(value)); }
 async function body(req, limit = 20000) { let text = ''; for await (const chunk of req) { text += chunk; if (text.length > limit) throw new Error('Request too large.'); } return JSON.parse(text || '{}'); }
 function view(user) {

@@ -6,6 +6,7 @@ import { mkdtempSync, readFileSync, rmSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { centre, player, photo } from './registration-fixture.mjs';
+import { drawChangeToken } from '../public/fixture.js';
 
 async function serve(t, port, env = {}) {
   const data = mkdtempSync(join(tmpdir(), 'carromia-test-'));
@@ -21,6 +22,45 @@ async function serve(t, port, env = {}) {
 }
 // A team from the i-th parish or centre of the diocese register, with ID proofs and photos.
 const entry = i => ({ name: `Team ${i}`, ...centre(i), adults: true, players: [player('Player One', '9111111111'), player('Player Two', '9222222222')] });
+
+test('API recreates and clears only an unstarted draw while keeping payment and photo files', async t => {
+  const { base, data, post, login } = await serve(t, 3124), cookie = await login();
+  const get = async () => (await fetch(`${base}/api/state`, { headers: { Cookie: cookie } })).json();
+  const redraw = (state, mode = 'recreate') => ({ mode, confirm: 'REDRAW', expectedDraw: drawChangeToken(state) });
+  assert.equal((await post('settings', { resetMinutes: 0, restMinutes: 0, registrationOpen: true, registrationDeadline: '', paymentRequired: true, upiId: 'desk@upi' }, cookie)).status, 200);
+  for (let i = 0; i < 4; i++) {
+    const response = await post('register', { ...entry(i), payment: { txnRef: `UTR00000${i}`, screenshot: photo } });
+    assert.equal(response.status, 201); const { team } = await response.json();
+    assert.equal((await post('confirm-payment', { id: team.id }, cookie)).status, 200);
+    assert.equal((await post('checkin', { id: team.id }, cookie)).status, 200);
+  }
+  const paths = ['photos', 'payments'].map(folder => join(data, folder, 'CAR-001.json'));
+  const files = paths.map(path => readFileSync(path, 'utf8'));
+  const teams = (await get()).teams;
+  assert.equal((await post('draw', {}, cookie)).status, 200);
+  let state = await get(); const old = redraw(state);
+  assert.equal((await post('draw', old)).status, 401);
+  assert.equal((await post('draw', { ...old, confirm: '' }, cookie)).status, 400);
+  assert.equal((await post('draw', old, cookie)).status, 200);
+  state = await get(); assert.deepEqual(state.teams, teams); assert.equal(state.matches.length, 4);
+  assert.deepEqual(paths.map(path => readFileSync(path, 'utf8')), files);
+  assert.equal((await post('draw', old, cookie)).status, 400, 'a previous confirmation cannot replace a new draw');
+  assert.equal((await post('draw', redraw(state, 'clear'), cookie)).status, 200);
+  state = await get(); assert.deepEqual(state.matches, []); assert.equal(state.event.registrationOpen, false);
+  assert.deepEqual(paths.map(path => readFileSync(path, 'utf8')), files);
+  assert.equal((await post('remove-team', { id: 'CAR-004' }, cookie)).status, 200);
+  assert.equal((await post('draw', {}, cookie)).status, 200);
+  state = await get(); const match = state.matches.find(m => m.status === 'ready');
+  assert.equal((await post('assign', { id: match.id, board: 1 }, cookie)).status, 200);
+  assert.equal((await post('start', { id: match.id }, cookie)).status, 200);
+  state = await get();
+  for (const mode of ['clear', 'recreate']) {
+    const response = await post('draw', redraw(state, mode), cookie);
+    assert.equal(response.status, 400); assert.match((await response.json()).error, /locked/);
+  }
+  assert.deepEqual((await get()).matches, state.matches);
+  assert.deepEqual(paths.map(path => readFileSync(path, 'utf8')), files);
+});
 
 test('API protects the desk, persists registration, produces QR, and omits private data publicly', async t => {
   const { base, data, post } = await serve(t, 3097);

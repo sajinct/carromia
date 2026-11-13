@@ -7,6 +7,7 @@ import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { seedDemo, publicState, addTeams, teamForm, groupForm, thumbPath, submitGallery } from '../lib/tournament.mjs';
 import { centre, player, photo } from './registration-fixture.mjs';
+import { drawChangeToken } from '../public/fixture.js';
 const root = join(import.meta.dirname, '..');
 // The registration Edge Function runs against the same stand-in, with the service key.
 const emailUrl = pathToFileURL(join(root, 'supabase', 'functions', 'registration', 'email.mjs')).href;
@@ -146,6 +147,7 @@ function fakeSupabase() {
       case '/rest/v1/rpc/save_tournament': {
         if (!caller?.official) return reply(403, { message: 'Sign in as a tournament official.' });
         const target = body.p_id ?? 'main', row = db.rows[target];
+        if (db.beforeSaveOnce) { const apply = db.beforeSaveOnce; delete db.beforeSaveOnce; apply(row.state); row.version++; db.pub[target] = { version: row.version, state: publicState(row.state) }; }
         if (db.raceOnce) { db.raceOnce = false; row.version++; row.state = { ...row.state, event: { ...row.state.event, venue: 'Changed elsewhere' } }; }
         if (body.p_expected !== (row?.version ?? 0)) return reply(409, { message: 'The event was changed from another session. Please try again.' });
         db.rows[target] = { version: (row?.version ?? 0) + 1, state: body.p_state };
@@ -158,6 +160,42 @@ function fakeSupabase() {
   };
   return db;
 }
+
+test('live Pages draw recreation preserves unrelated saves, refuses a concurrent start and isolates practice', async t => {
+  const db = fakeSupabase(), memory = new Map(), realFetch = globalThis.fetch;
+  globalThis.localStorage = { getItem: key => memory.get(key) ?? null, setItem: (key, value) => memory.set(key, value), removeItem: key => memory.delete(key) };
+  globalThis.fetch = db.fetch; globalThis.location = { origin: 'https://sajinct.github.io', pathname: '/carromia/', search: '' };
+  t.after(() => { globalThis.fetch = realFetch; delete globalThis.localStorage; delete globalThis.location; });
+  const { remoteApi } = await import('../dist/runtime.js');
+  const redraw = (state, mode = 'recreate') => ({ mode, confirm: 'REDRAW', expectedDraw: drawChangeToken(state) });
+  await remoteApi('login', { email: 'omar@example.org', password: 'official-pass' });
+  await assert.rejects(remoteApi('draw', redraw(await remoteApi('state'))), /Only an event admin/);
+  await remoteApi('logout'); await remoteApi('login', { email: 'asha@example.org', password: 'admin-pass' });
+  const before = structuredClone(db.rows.main.state);
+  db.raceOnce = true;
+  await remoteApi('draw', redraw(await remoteApi('state')));
+  let state = await remoteApi('state');
+  assert.equal(state.event.venue, 'Changed elsewhere'); assert.deepEqual(state.teams, before.teams);
+  assert.notEqual(state.drawId, before.drawId); assert.equal(db.public.state.drawId, state.drawId);
+  assert.ok(state.matches.every(m => !['called', 'playing'].includes(m.status)));
+  const reviewed = redraw(state);
+  db.beforeSaveOnce = latest => { const match = latest.matches.find(m => m.status === 'ready'); match.status = 'playing'; match.startedAt = 1000000; match.board = 1; };
+  await assert.rejects(remoteApi('draw', reviewed), /locked/);
+  assert.ok(db.rows.main.state.matches.some(m => m.status === 'playing'), 'retry keeps the concurrent match');
+  const main = structuredClone(db.rows.main);
+  await remoteApi('practice', { on: true });
+  state = await remoteApi('state');
+  await remoteApi('draw', redraw(state, 'clear'));
+  state = await remoteApi('state');
+  assert.equal(state.practice, true); assert.equal(state.demo, false); assert.deepEqual(state.matches, []);
+  assert.equal(state.teams.length, 16); assert.deepEqual(db.rows.main, main);
+  await remoteApi('settings', { resetMinutes: 5, restMinutes: 0, registrationOpen: true });
+  assert.equal((await remoteApi('state')).registration.open, true);
+  await remoteApi('remove-team', { id: 'CAR-016' }); await remoteApi('draw', {});
+  assert.ok((await remoteApi('state')).matches.some(m => m.placement === 3));
+  assert.deepEqual(db.rows.main, main);
+  await remoteApi('logout');
+});
 
 test('live Pages runtime: public view, official sign-in, roles, conflict retry, practice mode and team removal', async t => {
   const db = fakeSupabase(), memory = new Map(), realFetch = globalThis.fetch;

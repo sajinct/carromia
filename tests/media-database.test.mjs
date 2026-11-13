@@ -2,7 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { PGlite } from '@electric-sql/pglite';
-import { seedDemo, updateMedia, publicState } from '../lib/tournament.mjs';
+import { seedDemo, updateMedia, publicState, recreateDraw } from '../lib/tournament.mjs';
+import { drawChangeToken } from '../public/fixture.js';
 
 const migration = name => readFileSync(new URL(`../supabase/migrations/${name}`, import.meta.url), 'utf8');
 const mediaId = '00000000-0000-0000-0000-000000000001', adminId = '00000000-0000-0000-0000-000000000002';
@@ -43,6 +44,22 @@ async function mediaDatabase(t, restricted = false) {
   await db.exec(eventMigration); await db.exec(eventMigration);
   return db;
 }
+
+test('existing save RPC restricts draw recreation to admins and publishes the new bracket atomically', async t => {
+  const db = await mediaDatabase(t);
+  await db.query('insert into public.officials(user_id,name,role,boards) values ($1,$2,$3,$4),($5,$6,$7,$8)', [adminId, 'Admin', 'admin', [], mediaId, 'Official', 'official', []]);
+  const seed = seedDemo(), next = structuredClone(seed);
+  recreateDraw(next, { mode: 'recreate', confirm: 'REDRAW', expectedDraw: drawChangeToken(seed) });
+  await db.query('insert into public.tournament(id,version,state) values ($1,1,$2)', ['main', seed]);
+  await db.query("select set_config('request.jwt.claim.role','authenticated',false),set_config('request.jwt.claim.sub',$1,false)", [mediaId]);
+  await assert.rejects(db.query('select public.save_tournament(1,$1,null,$2,$3,$4)', [next, 'draw', { mode: 'recreate' }, 'main']), /Only an event admin/);
+  assert.equal((await db.query("select version from public.tournament where id='main'")).rows[0].version, 1);
+  await db.query("select set_config('request.jwt.claim.sub',$1,false)", [adminId]);
+  await db.query('select public.save_tournament(1,$1,null,$2,$3,$4)', [next, 'draw', { mode: 'recreate' }, 'main']);
+  const row = (await db.query("select version,state from public.tournament_public where id='main'")).rows[0];
+  assert.equal(row.version, 2); assert.equal(row.state.drawId, next.drawId); assert.deepEqual(row.state.matches, next.matches);
+  assert.deepEqual((await db.query('select action,detail from public.audit_log')).rows, [{ action: 'draw', detail: { mode: 'recreate' } }]);
+});
 
 test('PostgreSQL enforces assigned-board media rights even for crafted save requests', async t => {
   const db = await mediaDatabase(t);

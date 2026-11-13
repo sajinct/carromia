@@ -82,7 +82,8 @@ async function load(user) {
   const [row] = await request(user ? `/rest/v1/tournament?id=eq.${id}&select=version,state` : `/rest/v1/tournament_public?id=eq.${id}&select=version,state`, { token: user?.token });
   if (row) return { id, version: row.version, state: row.state };
   // The practice event is created from the sample tournament on an official's first use.
-  if (id === 'practice' && user) return { id, version: 0, state: practiceEvent((await request('/rest/v1/tournament?id=eq.main&select=state', { token: user.token }))[0]?.state?.event ?? emptyState().event) };
+  // An unsaved sample has no draw identity yet, so repeated reads can confirm the same draw.
+  if (id === 'practice' && user) return { id, version: 0, state: { ...practiceEvent((await request('/rest/v1/tournament?id=eq.main&select=state', { token: user.token }))[0]?.state?.event ?? emptyState().event), drawId: null } };
   return { id, version: 0, state: { ...emptyState(), practice: id === 'practice' } };
 }
 
@@ -91,7 +92,7 @@ async function change(user, action, input, apply, registrationFiles) {
   for (let attempt = 1; ; attempt++) {
     const { id, version, state } = await load(user);
     const next = apply(state, id) ?? state;
-    const { password, confirm, token, ...detail } = input;
+    const { password, confirm, token, expectedDraw, ...detail } = input;
     const body = registrationFiles ? { p_expected: version, p_state: next, p_team_id: input.id, p_photos: registrationFiles.photos, p_payment: registrationFiles.payment, p_detail: { id: input.id, expectedVersion: input.expectedVersion, photos: Object.keys(registrationFiles.photos), paymentScreenshot: Boolean(registrationFiles.payment) }, p_id: id }
       : { p_expected: version, p_state: next, p_public: publicState(next), p_action: action, p_detail: detail, p_id: id };
     try { await request(`/rest/v1/rpc/${registrationFiles ? 'save_registration' : 'save_tournament'}`, { method: 'POST', token: user.token, body }); return; }
